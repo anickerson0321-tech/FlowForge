@@ -7,9 +7,11 @@ import android.widget.Toast
 import com.flowforge.dictation.overlay.DictationService
 
 /**
- * Invisible trampoline used by the Quick Settings tile. Being a visible activity for a moment is
- * what allows the microphone foreground service to start; it finishes immediately.
- * If setup is incomplete it opens the main app on the permissions screen instead.
+ * Invisible trampoline used by the Quick Settings tile. A microphone foreground service may only
+ * start while the app is visible, and Android 14+ re-checks that when the service calls
+ * startForeground(). So this transparent activity stays alive briefly (it draws nothing) until the
+ * service has had time to enter the foreground, then finishes. If setup is incomplete it opens the
+ * main app on the permissions screen instead.
  */
 class BubbleLauncherActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -18,7 +20,13 @@ class BubbleLauncherActivity : Activity() {
         if (problem != null) {
             Toast.makeText(this, problem, Toast.LENGTH_LONG).show()
             startActivity(Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SCREEN, "permissions"))
+            finish()
+            return
         }
-        finish()
+        window.decorView.postDelayed({ if (!isFinishing) finish() }, FINISH_DELAY_MS)
+    }
+
+    private companion object {
+        const val FINISH_DELAY_MS = 800L
     }
 }

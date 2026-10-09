@@ -13,30 +13,25 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.flowforge.core.cleanup.InsertionContext
-import com.flowforge.core.insertion.InsertionDecision
+import com.flowforge.core.insertion.AccessibilityInserter
+import com.flowforge.core.insertion.AccessibleField
+import com.flowforge.core.insertion.ClipboardPort
+import com.flowforge.core.insertion.FieldState
+import com.flowforge.core.insertion.InsertResult
 import com.flowforge.core.insertion.InsertionMethod
-import com.flowforge.core.insertion.InsertionPolicy
-import com.flowforge.core.insertion.RefusalReason
-import com.flowforge.core.insertion.TextInsertionPlanner
-import com.flowforge.core.insertion.UndoHistory
-import com.flowforge.core.insertion.UndoRecord
+import com.flowforge.core.insertion.TargetField
+import com.flowforge.core.insertion.UndoOutcome
 import com.flowforge.dictation.graph
-
-sealed class InsertResult {
-    data class Inserted(val method: InsertionMethod, val verified: Boolean, val undoable: Boolean, val app: String) : InsertResult()
-    /** Show the text for manual copy/insert (preference, unsupported field, or app switch). */
-    data class Manual(val reason: String?) : InsertResult()
-    data class Refused(val reason: RefusalReason) : InsertResult()
-}
 
 /**
  * Inserts dictated text into the focused field of another app. It acts only when the user
  * finishes a dictation (or taps Insert/Undo); it ignores all accessibility events otherwise and
- * keeps no content.
+ * keeps no content. The insertion/undo rules live in core ([AccessibilityInserter]) and are unit
+ * tested; this class only adapts the accessibility node and clipboard.
  */
 class FlowForgeAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
-    private val undo = UndoHistory(capacity = 5)
+    private val inserter = AccessibilityInserter(clock = { SystemClock.elapsedRealtime() })
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -76,95 +71,66 @@ class FlowForgeAccessibilityService : AccessibilityService() {
 
     fun insert(text: String, smartSpacing: Boolean, forceMethod: InsertionMethod? = null): InsertResult {
         val settings = graph.settings
-        val node = focusedNode()
-        val target = node?.let(FieldInspector::target)
-        val decision = InsertionPolicy.decide(target, settings.dictation.insertion, packageName, settings.blockedPackages)
-        if (decision is InsertionDecision.Refuse) return InsertResult.Refused(decision.reason)
-        node!!
-        target!!
-        var method = forceMethod ?: (decision as InsertionDecision.Insert).method
-        if (method == InsertionMethod.SET_TEXT && !target.supportsSetText) method = InsertionMethod.PASTE
-        if (method == InsertionMethod.PASTE && !target.supportsPaste) method = InsertionMethod.MANUAL
-        return when (method) {
-            InsertionMethod.SET_TEXT -> setTextInsert(node, text, smartSpacing) ?: pasteInsert(node, text, smartSpacing)
-            InsertionMethod.PASTE -> pasteInsert(node, text, smartSpacing)
-            else -> InsertResult.Manual(null)
+        return inserter.insert(
+            field = focusedNode()?.let(::NodeField),
+            text = text,
+            preference = settings.dictation.insertion,
+            ownPackage = packageName,
+            blockedPackages = settings.blockedPackages,
+            smartSpacing = smartSpacing,
+            clipboard = clipboardPort,
+            clearClipboardAfterPaste = settings.clearClipboardAfterPaste,
+            forceMethod = forceMethod,
+        )
+    }
+
+    fun undoLast(): UndoOutcome = inserter.undoLast(focusedNode()?.let(::NodeField))
+
+    val canUndo: Boolean get() = inserter.canUndo
+
+    /** Adapts a live accessibility node to the core [AccessibleField] contract. */
+    private class NodeField(private val node: AccessibilityNodeInfo) : AccessibleField {
+        override val target: TargetField = FieldInspector.target(node)
+        override val key: String = FieldInspector.key(node)
+        override val maxTextLength: Int = node.maxTextLength
+
+        override fun read(): FieldState? = FieldInspector.state(node)
+
+        override fun setText(text: String): Boolean {
+            val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        }
+
+        override fun setSelection(start: Int, end: Int): Boolean {
+            val args = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
+            }
+            return node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
+        }
+
+        override fun paste(): Boolean = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+
+        override fun refreshedText(): String? {
+            node.refresh()
+            return node.text?.toString()
         }
     }
 
-    /** Returns null if the field refused ACTION_SET_TEXT (caller falls back to paste). */
-    private fun setTextInsert(node: AccessibilityNodeInfo, text: String, smartSpacing: Boolean): InsertResult? {
-        val before = FieldInspector.state(node) ?: return null
-        val plan = TextInsertionPlanner.plan(before, text, smartSpacing)
-        if (node.maxTextLength in 1 until plan.newText.length) return null
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, plan.newText)
-        }
-        if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return null
-        setSelection(node, plan.newCursor, plan.newCursor)
-        node.refresh()
-        val after = node.text?.toString()
-        val verified = after == plan.newText
-        if (!verified && after == before.text) return null // nothing happened
-        if (verified) undo.push(UndoRecord(plan, FieldInspector.key(node), SystemClock.elapsedRealtime()))
-        return InsertResult.Inserted(InsertionMethod.SET_TEXT, verified, undoable = verified, app = node.packageName?.toString().orEmpty())
-    }
+    private val clipboardPort = object : ClipboardPort {
+        private val clipboard get() = getSystemService(ClipboardManager::class.java)
 
-    private fun pasteInsert(node: AccessibilityNodeInfo, text: String, smartSpacing: Boolean): InsertResult {
-        val before = FieldInspector.state(node)
-        val plan = before?.let { TextInsertionPlanner.plan(it, text, smartSpacing) }
-        val payload = plan?.insertedText ?: text
-        val clipboard = getSystemService(ClipboardManager::class.java)
-        val clip = ClipData.newPlainText(CLIP_LABEL, payload)
-        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) }
-        clipboard.setPrimaryClip(clip)
-        if (!node.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return InsertResult.Manual("This app didn't accept a paste. The text is on your clipboard.")
-        if (graph.settings.clearClipboardAfterPaste) {
-            // Don't leave dictated text on the clipboard. Best effort: Android may already have
-            // replaced it if something else was copied in the meantime.
+        override fun put(text: String) {
+            val clip = ClipData.newPlainText(CLIP_LABEL, text)
+            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) }
+            clipboard.setPrimaryClip(clip)
+        }
+
+        override fun clearSoon() {
+            // Best effort: if something else was copied meanwhile, Android may already hold it.
             handler.postDelayed({ runCatching { clipboard.clearPrimaryClip() } }, CLEAR_CLIP_DELAY_MS)
         }
-        node.refresh()
-        val verified = plan != null && node.text?.toString() == plan.newText
-        if (verified) undo.push(UndoRecord(plan!!, FieldInspector.key(node), SystemClock.elapsedRealtime()))
-        return InsertResult.Inserted(InsertionMethod.PASTE, verified, undoable = verified && FieldInspector.target(node).supportsSetText, app = node.packageName?.toString().orEmpty())
     }
-
-    /**
-     * Restores the field to its state before the last FlowForge insertion, only if it still holds
-     * exactly what FlowForge produced. Returns a user-facing message.
-     */
-    fun undoLast(): UndoOutcome {
-        val record = undo.peek() ?: return UndoOutcome(false, "Nothing to undo.")
-        val node = focusedNode() ?: return UndoOutcome(false, "Tap into the text field first.")
-        val current = FieldInspector.state(node)
-        if (current == null || !record.canUndo(current, FieldInspector.key(node))) {
-            undo.pop()
-            return UndoOutcome(false, "The text changed after dictation, so undo was skipped to protect your edits.")
-        }
-        val restored = record.restoredState()
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, restored.text)
-        }
-        if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-            return UndoOutcome(false, "This app doesn't allow FlowForge to undo here.")
-        }
-        setSelection(node, restored.selectionStart, restored.selectionEnd)
-        undo.pop()
-        return UndoOutcome(true, "Dictation undone.")
-    }
-
-    val canUndo: Boolean get() = undo.peek() != null
-
-    private fun setSelection(node: AccessibilityNodeInfo, start: Int, end: Int) {
-        val args = Bundle().apply {
-            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
-            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
-    }
-
-    data class UndoOutcome(val success: Boolean, val message: String)
 
     companion object {
         private const val CLIP_LABEL = "FlowForge dictation"

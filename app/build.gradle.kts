@@ -75,6 +75,9 @@ dependencies {
     implementation(project(":core"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
+    // JVM unit tests use the pure-Java parts of the real Android 16 framework (AccessibilityNodeInfo,
+    // InputType, ...). The SDK's android.jar can't be used: its methods are stubs that throw.
+    testImplementation(libs.android.compile)
 }
 
 val androidCompileClasspath: FileCollection =
@@ -103,7 +106,10 @@ kotlin {
     }
 }
 
-tasks.test { useJUnit() }
+tasks.test {
+    useJUnit()
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Generated sources

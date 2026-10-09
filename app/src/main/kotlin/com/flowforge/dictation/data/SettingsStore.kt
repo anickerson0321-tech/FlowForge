@@ -15,15 +15,6 @@ import com.flowforge.core.settings.DictationSettings
  */
 class SettingsStore(context: Context, private val box: SecureBox) {
     private val prefs: SharedPreferences = context.getSharedPreferences("flowforge_settings", Context.MODE_PRIVATE)
-    private val listeners = LinkedHashSet<() -> Unit>()
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> listeners.toList().forEach { it() } }
-
-    init {
-        prefs.registerOnSharedPreferenceChangeListener(prefListener)
-    }
-
-    fun addListener(l: () -> Unit) { listeners += l }
-    fun removeListener(l: () -> Unit) { listeners -= l }
 
     // --- Dictation -----------------------------------------------------------------------------
 

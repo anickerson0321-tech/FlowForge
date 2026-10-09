@@ -31,12 +31,12 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
 import com.flowforge.core.cleanup.CleanupMode
 import com.flowforge.core.cleanup.InsertionContext
+import com.flowforge.core.insertion.InsertResult
 import com.flowforge.core.insertion.InsertionPolicy
 import com.flowforge.core.recognition.RecognitionErrorKind
 import com.flowforge.core.session.Phase
 import com.flowforge.core.session.SessionState
 import com.flowforge.dictation.accessibility.FlowForgeAccessibilityService
-import com.flowforge.dictation.accessibility.InsertResult
 import com.flowforge.dictation.dictation.DeliveryReport
 import com.flowforge.dictation.dictation.DictationController
 import com.flowforge.dictation.dictation.DictationOutput

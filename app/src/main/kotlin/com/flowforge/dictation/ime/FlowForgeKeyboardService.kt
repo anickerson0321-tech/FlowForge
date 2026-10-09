@@ -15,15 +15,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.flowforge.core.cleanup.CleanupMode
 import com.flowforge.core.cleanup.InsertionContext
-import com.flowforge.core.insertion.FieldState
-import com.flowforge.core.insertion.TextInsertionPlanner
-import com.flowforge.core.insertion.UndoHistory
-import com.flowforge.core.insertion.UndoRecord
+import com.flowforge.core.insertion.CursorEditor
+import com.flowforge.core.insertion.CursorInserter
+import com.flowforge.core.insertion.UndoOutcome
 import com.flowforge.core.session.Phase
 import com.flowforge.core.session.SessionState
 import com.flowforge.dictation.accessibility.FieldInspector
@@ -48,7 +48,7 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var controller: DictationController
-    private val undo = UndoHistory(capacity = 10)
+    private val inserter = CursorInserter(clock = { SystemClock.elapsedRealtime() })
     private var lastOutput: DictationOutput? = null
 
     private var ui: Ui? = null
@@ -195,7 +195,7 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
         super.onStartInputView(info, restarting)
         passwordField = FieldInspector.isPasswordInputType(info.inputType)
         incognitoField = (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
-        if (!restarting) undo.clear()
+        if (!restarting) inserter.clear()
         updateActionKeys()
         modeChip?.text = graph.settings.dictation.cleanupMode.label
         lastPanelKey = null
@@ -226,7 +226,7 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
             action == EditorInfo.IME_ACTION_DONE -> "Done"
             else -> "⏎"
         }
-        val hasUndo = undo.peek() != null
+        val hasUndo = inserter.canUndo
         undoKey?.alpha = if (hasUndo) 1f else 0.45f
         originalKey?.alpha = if (hasUndo && lastOutput?.let { it.original.trim() != it.text } == true) 1f else 0.45f
     }
@@ -331,9 +331,7 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
     override fun insertionContext(): InsertionContext {
         if (passwordField) return InsertionContext.EMPTY
         val ic = currentInputConnection ?: return InsertionContext.EMPTY
-        val before = ic.getTextBeforeCursor(InsertionContext.MAX_CONTEXT_CHARS, 0) ?: ""
-        val after = ic.getTextAfterCursor(InsertionContext.MAX_CONTEXT_CHARS, 0) ?: ""
-        return InsertionContext.of(before, after)
+        return inserter.context(ConnectionEditor(ic))
     }
 
     override fun onNotice(message: String) {
@@ -344,9 +342,9 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
         lastOutput = output
         val target = currentInputEditorInfo?.packageName.orEmpty()
         if (output.wantsUndoOfPrevious) {
-            val message = undoLast()
+            val outcome = undoLast()
             if (output.text.isBlank()) {
-                statusView?.text = message
+                statusView?.text = outcome.message
                 done(DeliveryReport("undo", target))
                 return
             }
@@ -370,17 +368,7 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
     /** Commits [text] at the cursor (replacing any selection) with smart spacing; records undo. */
     private fun insertText(text: String): Boolean {
         val ic = currentInputConnection ?: return false
-        val before = ic.getTextBeforeCursor(InsertionContext.MAX_CONTEXT_CHARS, 0)?.toString() ?: ""
-        val selected = ic.getSelectedText(0)?.toString() ?: ""
-        val after = ic.getTextAfterCursor(InsertionContext.MAX_CONTEXT_CHARS, 0)?.toString() ?: ""
-        // A local window around the cursor is enough to plan spacing; the rest of the field is untouched.
-        val window = FieldState(before + selected + after, before.length, before.length + selected.length)
-        val plan = TextInsertionPlanner.plan(window, text, graph.settings.dictation.smartSpacing)
-        ic.beginBatchEdit()
-        val ok = ic.commitText(plan.insertedText, 1)
-        ic.endBatchEdit()
-        if (ok) undo.push(UndoRecord(plan, fieldKey(), SystemClock.elapsedRealtime()))
-        return ok
+        return inserter.insert(ConnectionEditor(ic), text, fieldKey(), graph.settings.dictation.smartSpacing)
     }
 
     private fun fieldKey(): String {
@@ -389,28 +377,27 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
     }
 
     /** Removes the last dictation if the text before the cursor still ends with it. */
-    private fun undoLast(): String {
-        val ic = currentInputConnection ?: return "No text field."
-        val record = undo.peek() ?: return "Nothing to undo."
-        if (record.targetKey != fieldKey()) {
-            undo.pop()
-            return "That dictation was in another field."
-        }
-        val before = ic.getTextBeforeCursor(record.plan.insertedText.length, 0) ?: ""
-        val step = record.cursorRelativeUndo(before)
-        if (step == null) {
-            undo.pop()
-            updateActionKeys()
-            return "The text changed after dictation, so undo was skipped to protect your edits."
-        }
-        ic.beginBatchEdit()
-        ic.deleteSurroundingText(step.first, 0)
-        if (step.second.isNotEmpty()) ic.commitText(step.second, 1)
-        ic.endBatchEdit()
-        undo.pop()
+    private fun undoLast(): UndoOutcome {
+        val ic = currentInputConnection ?: return UndoOutcome(false, "No text field.")
+        val outcome = inserter.undoLast(ConnectionEditor(ic), fieldKey())
         updateActionKeys()
-        statusView?.text = "Dictation undone."
-        return "Dictation undone."
+        statusView?.text = outcome.message
+        return outcome
+    }
+
+    /** Adapts Android's InputConnection to the core [CursorEditor] contract. */
+    private class ConnectionEditor(private val ic: InputConnection) : CursorEditor {
+        override fun textBeforeCursor(n: Int): CharSequence? = ic.getTextBeforeCursor(n, 0)
+        override fun textAfterCursor(n: Int): CharSequence? = ic.getTextAfterCursor(n, 0)
+        override fun selectedText(): CharSequence? = ic.getSelectedText(0)
+        override fun commit(text: String): Boolean = ic.commitText(text, 1)
+        override fun deleteBeforeCursor(n: Int): Boolean = ic.deleteSurroundingText(n, 0)
+        override fun beginBatch() {
+            ic.beginBatchEdit()
+        }
+        override fun endBatch() {
+            ic.endBatchEdit()
+        }
     }
 
     private fun useOriginal() {
@@ -423,12 +410,12 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
             }
             out == null -> statusView?.text = "No dictation yet."
             else -> {
-                val message = undoLast()
-                if (message == "Dictation undone.") {
+                val outcome = undoLast()
+                if (outcome.success) {
                     insertText(out.original.trim())
                     statusView?.text = "Inserted the original transcript."
                 } else {
-                    statusView?.text = message
+                    statusView?.text = outcome.message
                 }
             }
         }

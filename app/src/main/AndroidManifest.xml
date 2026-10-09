@@ -21,6 +21,12 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Lists launchable apps for the per-app "never type here" setting. Narrow alternative to
+             QUERY_ALL_PACKAGES, which Google Play restricts. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

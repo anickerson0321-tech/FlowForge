@@ -178,13 +178,13 @@ class DictationController(private val context: Context, private val surface: Sur
     }
 
     private fun process(sessionId: Int, transcript: String) {
-        val context = runCatching { surface.insertionContext() }.getOrDefault(InsertionContext.EMPTY)
+        val insertionContext = runCatching { surface.insertionContext() }.getOrDefault(InsertionContext.EMPTY)
         val settings = graph.settings.dictation
         val privacy = graph.settings.privacy
         val engineUsed = engineName
         graph.background({
             val result = try {
-                TextCleaner(graph.dictionary.current()).clean(transcript, settings.cleanupOptions(context))
+                TextCleaner(graph.dictionary.current()).clean(transcript, settings.cleanupOptions(insertionContext))
             } catch (t: Throwable) {
                 // A cleanup bug must never lose the user's words: fall back to the raw transcript.
                 Log.e(TAG, "cleanup failed", t)
@@ -199,7 +199,7 @@ class DictationController(private val context: Context, private val surface: Sur
                     cfg == null -> note = "AI cleanup is on but no cloud provider is set up."
                     !ConsentPolicy.isValid(privacy.cleanupConsent, CloudPurpose.AI_CLEANUP, cfg.baseUrl) ->
                         note = "AI cleanup needs your consent in Privacy settings; used on-device cleanup."
-                    !EngineAvailability.networkAvailable(this.context) -> note = "Offline: used on-device cleanup only."
+                    !EngineAvailability.networkAvailable(context) -> note = "Offline: used on-device cleanup only."
                     else -> try {
                         val vocab = graph.dictionary.current().entries.map { it.term }
                         val candidate = OpenAiCompatibleClient(cfg).chat(AiCleanup.systemPrompt(settings.cleanupMode, vocab), text)
@@ -225,9 +225,21 @@ class DictationController(private val context: Context, private val surface: Sur
                 )
             }
             output.note?.let(surface::onNotice)
-            surface.deliver(output) { report ->
-                saveHistory(output, report)
-                if (state.sessionId == sessionId) dispatch(SessionEvent.Delivered)
+            try {
+                surface.deliver(output) { report ->
+                    saveHistory(output, report)
+                    if (state.sessionId == sessionId) dispatch(SessionEvent.Delivered)
+                }
+            } catch (e: RuntimeException) {
+                // Never crash or get stuck in PROCESSING because another app's field misbehaved.
+                Log.e(TAG, "delivery failed", e)
+                runCatching {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("FlowForge dictation", output.text))
+                }
+                surface.onNotice("Couldn't insert the text (${e.javaClass.simpleName}); it was copied to the clipboard instead.")
+                saveHistory(output, DeliveryReport("failed", ""))
+                if (state.sessionId == sessionId && state.phase == Phase.PROCESSING) dispatch(SessionEvent.Delivered)
             }
         }
     }

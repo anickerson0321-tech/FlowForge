@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import com.flowforge.core.layout.AdaptiveLayout
 import com.flowforge.dictation.graph
 import com.flowforge.dictation.ui.kit.Ui
 import com.flowforge.dictation.ui.screens.CleanupScreen
@@ -58,7 +59,7 @@ class MainActivity : Activity() {
     private var backRegistered = false
     private var firstResume = true
 
-    val isWide: Boolean get() = resources.configuration.screenWidthDp >= 600
+    val isWide: Boolean get() = AdaptiveLayout.isTwoPane(resources.configuration.screenWidthDp)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

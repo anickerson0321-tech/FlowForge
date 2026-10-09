@@ -32,6 +32,8 @@ import android.widget.TextView
 import com.flowforge.core.cleanup.CleanupMode
 import com.flowforge.core.cleanup.InsertionContext
 import com.flowforge.core.insertion.InsertResult
+import com.flowforge.core.layout.BubbleGeometry
+import com.flowforge.core.layout.Bounds
 import com.flowforge.core.insertion.InsertionPolicy
 import com.flowforge.core.recognition.RecognitionErrorKind
 import com.flowforge.core.session.Phase
@@ -189,11 +191,13 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
     }
 
     private fun applySavedPosition(lp: WindowManager.LayoutParams, size: Int) {
-        val area = usableBounds()
         val s = graph.settings
-        lp.x = area.left + (s.bubbleX.coerceIn(0f, 1f) * (area.width() - size)).toInt()
-        lp.y = area.top + (s.bubbleY.coerceIn(0f, 1f) * (area.height() - size)).toInt()
+        val p = BubbleGeometry.place(s.bubbleX, s.bubbleY, usableBounds().toBounds(), size)
+        lp.x = p.x
+        lp.y = p.y
     }
+
+    private fun Rect.toBounds() = Bounds(left, top, right, bottom)
 
     private fun bubbleRect(): Rect {
         val lp = bubbleParams ?: return Rect()
@@ -244,11 +248,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
     private fun snapToEdge() {
         val v = bubble ?: return
         val lp = bubbleParams ?: return
-        val area = usableBounds()
-        val size = v.width
-        val toRight = lp.x + size / 2 > area.centerX()
-        val targetX = if (toRight) area.right - size else area.left
-        val clampedY = lp.y.coerceIn(area.top, area.bottom - size)
+        val target = BubbleGeometry.snap(lp.x, lp.y, usableBounds().toBounds(), v.width)
         val startX = lp.x
         val startY = lp.y
         ValueAnimator.ofFloat(0f, 1f).apply {
@@ -256,14 +256,14 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 val f = it.animatedValue as Float
-                lp.x = (startX + (targetX - startX) * f).toInt()
-                lp.y = (startY + (clampedY - startY) * f).toInt()
+                lp.x = (startX + (target.x - startX) * f).toInt()
+                lp.y = (startY + (target.y - startY) * f).toInt()
                 if (v.isAttachedToWindow) runCatching { wm.updateViewLayout(v, lp) }
             }
             start()
         }
-        graph.settings.bubbleX = if (toRight) 1f else 0f
-        graph.settings.bubbleY = if (area.height() > size) (clampedY - area.top).toFloat() / (area.height() - size) else 0f
+        graph.settings.bubbleX = target.fractionX
+        graph.settings.bubbleY = target.fractionY
     }
 
     private fun showDismissTarget() {

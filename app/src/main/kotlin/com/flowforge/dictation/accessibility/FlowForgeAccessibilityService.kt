@@ -122,7 +122,8 @@ class FlowForgeAccessibilityService : AccessibilityService() {
 
         override fun put(text: String) {
             val clip = ClipData.newPlainText(CLIP_LABEL, text)
-            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) }
+            // Automatic paste only: keep the dictation out of Android's clipboard preview overlay.
+            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
             clipboard.setPrimaryClip(clip)
         }
 

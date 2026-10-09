@@ -19,6 +19,7 @@ import com.flowforge.dictation.ui.kit.Ui
 
 class PermissionsScreen(host: MainActivity) : Screen(host) {
     override val title = "Setup & permissions"
+    override val refreshOnResume = true
 
     override fun build(ui: Ui): View {
         val col = ui.column(spacingDp = 10)

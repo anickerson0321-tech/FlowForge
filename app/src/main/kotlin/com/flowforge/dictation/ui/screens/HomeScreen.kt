@@ -125,6 +125,13 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         return col
     }
 
+    override val refreshOnResume = true
+
+    /** Leaving the screen must never leave the in-app test recording in the background. */
+    override fun onPause() {
+        tryIt?.cancelIfActive()
+    }
+
     override fun onDestroy() {
         tryIt?.release()
         tryIt = null

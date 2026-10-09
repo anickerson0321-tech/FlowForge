@@ -9,6 +9,7 @@ import android.view.WindowManager
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import com.flowforge.dictation.ui.kit.Ui
 import com.flowforge.dictation.ui.kit.dp
 
@@ -20,15 +21,23 @@ class OverlayPanel(private val context: Context, private val wm: WindowManager) 
     class Action(val label: String, val style: Ui.ButtonStyle = Ui.ButtonStyle.TONAL, val run: () -> Unit)
 
     private var ui = Ui(context)
+    /** Non-null from a successful addView until removeView (attachment happens a frame later). */
     private var root: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
     private val autoHide = Runnable { hide() }
 
-    val isShowing: Boolean get() = root?.isAttachedToWindow == true
+    // The card currently shown; when only its text changes (live transcript) it is updated in
+    // place so buttons are not rebuilt under the user's finger.
+    private var signature: List<Any>? = null
+    private var bodyView: TextView? = null
+    private var bodyScroll: ScrollView? = null
+
+    val isShowing: Boolean get() = root != null
 
     /** Recreate views after a theme/density change. */
     fun refreshTheme() {
         ui = Ui(context)
+        signature = null
     }
 
     fun show(
@@ -39,33 +48,29 @@ class OverlayPanel(private val context: Context, private val wm: WindowManager) 
         screen: Rect,
         autoHideMs: Long = 0,
         bodyIsTranscript: Boolean = false,
+        /**
+         * Live transcript: if the same live card is showing, only its text is updated. Only use for
+         * cards whose actions don't capture per-result data (their old closures are kept).
+         */
+        live: Boolean = false,
     ) {
-        val card = ui.column(spacingDp = 10).apply {
-            background = ui.rounded(ui.palette.surface, 20, ui.palette.outline)
-            elevation = context.dp(8).toFloat()
-            setPadding(context.dp(16), context.dp(14), context.dp(16), context.dp(12))
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-            addView(ui.text(title, 14f, ui.palette.onSurfaceVariant, bold = true))
-            if (!body.isNullOrBlank()) {
-                val bodyView = ui.text(body, if (bodyIsTranscript) 17f else 15f, ui.palette.onSurface)
-                val scroll = MaxHeightScrollView(context, context.dp(180)).apply { addView(bodyView) }
-                addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                if (bodyIsTranscript) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
-            }
-            if (actions.isNotEmpty()) {
-                val buttons = ui.row(8)
-                actions.forEach { a -> buttons.addView(ui.button(a.label, a.style) { a.run() }) }
-                addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(buttons) })
-            }
-        }
         val width = minOf(screen.width() - context.dp(24), context.dp(420))
-        val existing = root?.takeIf { it.isAttachedToWindow }
+        val newSignature = listOf(title, actions.map { it.label }, bodyIsTranscript, body.isNullOrBlank(), live)
+        val existing = root
+        val inPlace = live && existing != null && newSignature == signature && bodyView != null
+        if (inPlace) {
+            bodyView?.text = body
+            if (bodyIsTranscript) bodyScroll?.post { bodyScroll?.fullScroll(View.FOCUS_DOWN) }
+        }
         val container = existing ?: LinearLayout(context).apply {
             setPadding(context.dp(4), context.dp(4), context.dp(4), context.dp(8))
             clipToPadding = false
         }
-        container.removeAllViews()
-        container.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        if (!inPlace) {
+            container.removeAllViews()
+            container.addView(buildCard(title, body, actions, bodyIsTranscript), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            signature = newSignature
+        }
         val lp = (params ?: WindowManager.LayoutParams(
             width, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -85,6 +90,31 @@ class OverlayPanel(private val context: Context, private val wm: WindowManager) 
         params = lp
         root?.removeCallbacks(autoHide)
         if (autoHideMs > 0) root?.postDelayed(autoHide, autoHideMs)
+    }
+
+    private fun buildCard(title: String, body: String?, actions: List<Action>, bodyIsTranscript: Boolean): View {
+        bodyView = null
+        bodyScroll = null
+        return ui.column(spacingDp = 10).apply {
+            background = ui.rounded(ui.palette.surface, 20, ui.palette.outline)
+            elevation = context.dp(8).toFloat()
+            setPadding(context.dp(16), context.dp(14), context.dp(16), context.dp(12))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            addView(ui.text(title, 14f, ui.palette.onSurfaceVariant, bold = true))
+            if (!body.isNullOrBlank()) {
+                val text = ui.text(body, if (bodyIsTranscript) 17f else 15f, ui.palette.onSurface)
+                val scroll = MaxHeightScrollView(context, context.dp(180)).apply { addView(text) }
+                addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                if (bodyIsTranscript) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+                bodyView = text
+                bodyScroll = scroll
+            }
+            if (actions.isNotEmpty()) {
+                val buttons = ui.row(8)
+                actions.forEach { a -> buttons.addView(ui.button(a.label, a.style) { a.run() }) }
+                addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(buttons) })
+            }
+        }
     }
 
     /** Places the card above the bubble when it sits in the lower half, otherwise below it. */
@@ -115,6 +145,9 @@ class OverlayPanel(private val context: Context, private val wm: WindowManager) 
         r.removeCallbacks(autoHide)
         runCatching { wm.removeView(r) }
         root = null
+        signature = null
+        bodyView = null
+        bodyScroll = null
     }
 }
 

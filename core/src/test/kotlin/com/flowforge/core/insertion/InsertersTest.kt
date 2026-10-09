@@ -96,6 +96,8 @@ class InsertersTest {
         assertTrue(r is InsertResult.Inserted && r.method == InsertionMethod.PASTE)
         assertEquals("<b>Hello</b> there world", f.text)
         assertTrue("dictation must not linger on the clipboard", clip.cleared)
+        // Undo would have to rewrite the whole rich field as plain text, so it is not offered.
+        assertFalse((r as InsertResult.Inserted).undoable)
     }
 
     @Test

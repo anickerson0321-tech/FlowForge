@@ -33,6 +33,7 @@ import com.flowforge.core.cleanup.CleanupMode
 import com.flowforge.core.cleanup.InsertionContext
 import com.flowforge.core.insertion.InsertResult
 import com.flowforge.core.layout.BubbleGeometry
+import com.flowforge.core.settings.InsertionPreference
 import com.flowforge.core.layout.Bounds
 import com.flowforge.core.insertion.InsertionPolicy
 import com.flowforge.core.recognition.RecognitionErrorKind
@@ -121,30 +122,35 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
 
     private fun enterForeground(): Boolean {
         if (inForeground) return true
-        val problem = when {
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED -> "Microphone permission is needed."
-            !Settings.canDrawOverlays(this) -> "Permission to display over other apps is needed."
-            else -> null
-        }
-        if (problem != null) {
-            Notifications.alert(this, "Couldn't show the FlowForge bubble", "$problem Open FlowForge to finish setup.")
-            stopSelf()
-            return false
-        }
-        return try {
+        // startForeground() must come first: a service started with startForegroundService() that
+        // stops without calling it crashes the app. If the call throws (microphone permission
+        // revoked, or started from the background), Android has already released that obligation,
+        // so stopping afterwards is safe.
+        try {
             startForeground(
                 Notifications.ID_SERVICE, Notifications.serviceNotification(this, recording = false),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
             )
             inForeground = true
-            true
         } catch (e: RuntimeException) {
-            // ForegroundServiceStartNotAllowedException / SecurityException: started from the background.
             Log.w(TAG, "startForeground refused", e)
-            Notifications.alert(this, "Couldn't start the FlowForge bubble", "Android only allows the microphone bubble to start from the FlowForge app or its Quick Settings tile. Tap to open FlowForge.")
+            val reason = if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                "Microphone permission is needed. Open FlowForge to finish setup."
+            } else {
+                "Android only allows the microphone bubble to start from the FlowForge app or its Quick Settings tile. Tap to open FlowForge."
+            }
+            Notifications.alert(this, "Couldn't start the FlowForge bubble", reason)
             stopSelf()
-            false
+            return false
         }
+        if (!Settings.canDrawOverlays(this)) {
+            Notifications.alert(this, "Couldn't show the FlowForge bubble", "Permission to display over other apps is needed. Open FlowForge to finish setup.")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            inForeground = false
+            stopSelf()
+            return false
+        }
+        return true
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -320,6 +326,12 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
     }
 
     override fun onBubbleLongPress() {
+        if (controller.state.phase == Phase.PROCESSING) {
+            // Uploads and AI cleanup can take a while on a slow network; let the user give up.
+            controller.cancel()
+            panel.hide()
+            return
+        }
         if (controller.state.isRecording) {
             showPanel(
                 "Recording", "Finish to insert, or cancel to discard what you said.",
@@ -350,9 +362,16 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         showPanel("FlowForge", "${mode.label} cleanup. $insertion Drag the bubble to the ✕ to hide it.", actions)
     }
 
-    private fun showPanel(title: String, body: String?, actions: List<OverlayPanel.Action>, autoHideMs: Long = 0, transcript: Boolean = false) {
+    private fun showPanel(
+        title: String,
+        body: String?,
+        actions: List<OverlayPanel.Action>,
+        autoHideMs: Long = 0,
+        transcript: Boolean = false,
+        live: Boolean = false,
+    ) {
         if (bubble == null) return
-        panel.show(title, body, actions, bubbleRect(), usableBounds(), autoHideMs, transcript)
+        panel.show(title, body, actions, bubbleRect(), usableBounds(), autoHideMs, transcript, live)
     }
 
     private fun showMessage(message: String) =
@@ -403,8 +422,13 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
                     OverlayPanel.Action("Done", Ui.ButtonStyle.FILLED) { controller.stop() },
                 ),
                 transcript = true,
+                live = true,
             )
-            Phase.PROCESSING -> showPanel("Processing…", state.displayText.takeIf { it.isNotBlank() }, emptyList(), transcript = true)
+            Phase.PROCESSING -> showPanel(
+                "Processing…", state.displayText.takeIf { it.isNotBlank() },
+                listOf(OverlayPanel.Action("Cancel", Ui.ButtonStyle.OUTLINED) { controller.cancel(); panel.hide() }),
+                transcript = true,
+            )
             Phase.ERROR -> showError(state)
             Phase.IDLE -> Unit
         }
@@ -414,7 +438,11 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         val error = state.error ?: return
         val actions = ArrayList<OverlayPanel.Action>()
         if (state.recoveredText.isNotBlank()) {
-            actions += OverlayPanel.Action("Copy what I said", Ui.ButtonStyle.FILLED) { copy(state.recoveredText); controller.dismiss() }
+            actions += OverlayPanel.Action("Copy what I said", Ui.ButtonStyle.FILLED) {
+                copy(state.recoveredText)
+                controller.dismiss()
+                showMessage("Copied. Long-press the text field and choose Paste.")
+            }
         }
         if (error.kind == RecognitionErrorKind.PERMISSION || error.kind == RecognitionErrorKind.CONSENT_REQUIRED ||
             error.kind == RecognitionErrorKind.NOT_CONFIGURED || error.kind == RecognitionErrorKind.ENGINE_UNAVAILABLE ||
@@ -497,7 +525,10 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         val actions = ArrayList<OverlayPanel.Action>()
         if (canInsert && FlowForgeAccessibilityService.isRunning) {
             actions += OverlayPanel.Action("Insert", Ui.ButtonStyle.FILLED) {
-                val r = FlowForgeAccessibilityService.instance?.insert(displayed(output), graph.settings.dictation.smartSpacing, forceMethod = null)
+                // The user explicitly asked to insert, so ignore the "Preview first" preference here.
+                val r = FlowForgeAccessibilityService.instance?.insert(
+                    displayed(output), graph.settings.dictation.smartSpacing, preference = InsertionPreference.AUTOMATIC,
+                )
                 when (r) {
                     is InsertResult.Inserted -> showInserted(output, r.undoable)
                     is InsertResult.Refused -> showMessage(r.reason.message)

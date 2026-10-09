@@ -60,6 +60,8 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
     private var originalKey: TextView? = null
 
     private var passwordField = false
+    /** Field the current/last dictation started in. */
+    private var sessionFieldKey: String? = null
     private var incognitoField = false
     private var lastPanelKey: Any? = null
 
@@ -278,11 +280,16 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
             return
         }
         if (controller.state.phase == Phase.ERROR) controller.dismiss()
+        if (!controller.state.isActive) sessionFieldKey = fieldKey()
         controller.toggle()
     }
 
+    /** Long-press cancels recording or a slow cloud/AI processing step. */
     override fun onBubbleLongPress() {
-        if (controller.state.isRecording) controller.cancel()
+        if (controller.state.isActive) {
+            controller.cancel()
+            statusView?.text = "Dictation cancelled."
+        }
     }
 
     override fun onDragStart() = Unit
@@ -405,7 +412,15 @@ class FlowForgeKeyboardService : InputMethodService(), DictationController.Surfa
         val recovered = controller.state.recoveredText
         when {
             controller.state.phase == Phase.ERROR && recovered.isNotBlank() -> {
-                insertText(recovered)
+                // Only put recovered speech back into the field it was dictated in, never into a
+                // password field or a different field the user has since moved to.
+                if (!passwordField && fieldKey() == sessionFieldKey) {
+                    insertText(recovered)
+                    statusView?.text = "Inserted what was captured before the interruption."
+                } else {
+                    copyToClipboard(recovered)
+                    statusView?.text = "The captured text belongs to another field, so it was copied to the clipboard."
+                }
                 controller.dismiss()
             }
             out == null -> statusView?.text = "No dictation yet."

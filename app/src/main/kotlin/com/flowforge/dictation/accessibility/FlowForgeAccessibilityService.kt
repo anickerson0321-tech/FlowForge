@@ -21,6 +21,7 @@ import com.flowforge.core.insertion.InsertResult
 import com.flowforge.core.insertion.InsertionMethod
 import com.flowforge.core.insertion.TargetField
 import com.flowforge.core.insertion.UndoOutcome
+import com.flowforge.core.settings.InsertionPreference
 import com.flowforge.dictation.graph
 
 /**
@@ -69,12 +70,18 @@ class FlowForgeAccessibilityService : AccessibilityService() {
         return FieldInspector.state(node)?.contextAroundSelection() ?: InsertionContext.EMPTY
     }
 
-    fun insert(text: String, smartSpacing: Boolean, forceMethod: InsertionMethod? = null): InsertResult {
+    /** [preference] overrides the user's setting (e.g. AUTOMATIC when they tap Insert in a preview). */
+    fun insert(
+        text: String,
+        smartSpacing: Boolean,
+        forceMethod: InsertionMethod? = null,
+        preference: InsertionPreference? = null,
+    ): InsertResult {
         val settings = graph.settings
         return inserter.insert(
             field = focusedNode()?.let(::NodeField),
             text = text,
-            preference = settings.dictation.insertion,
+            preference = preference ?: settings.dictation.insertion,
             ownPackage = packageName,
             blockedPackages = settings.blockedPackages,
             smartSpacing = smartSpacing,

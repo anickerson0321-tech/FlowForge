@@ -226,9 +226,11 @@ class AndroidSpeechEngine(
                     if (SystemClock.elapsedRealtime() - lastSpeechAt > silenceTimeoutMs) finish("") else restartSoon()
                 // Stopped by the user: end normally with whatever was committed.
                 stopping && (silence || error == SpeechRecognizer.ERROR_CLIENT) -> finish("")
+                // Never reopen the microphone after the user asked to stop.
+                stopping && error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> finish("")
                 error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && busyRetries < 3 -> {
                     busyRetries++
-                    handler.postDelayed({ if (!finished) listen() }, 300L * busyRetries)
+                    handler.postDelayed({ if (!finished && !stopping) listen() }, 300L * busyRetries)
                 }
                 else -> fail(error)
             }

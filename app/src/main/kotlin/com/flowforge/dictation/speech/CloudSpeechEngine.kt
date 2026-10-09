@@ -47,6 +47,7 @@ class CloudSpeechEngine(
             context, maxSeconds,
             onLevel = { level -> sink(SessionEvent.Level(sessionId, level)) },
             onSilenced = { sink(SessionEvent.Interrupted("another app is using the microphone")) },
+            onReadError = { sink(SessionEvent.Interrupted("the microphone stopped working")) },
         )
         if (!rec.start()) {
             sink(SessionEvent.Failed(sessionId, RecognitionErrors.fromAndroidCode(RecognitionErrors.ERROR_AUDIO)))

@@ -24,6 +24,8 @@ class PcmRecorder(
     private val maxSeconds: Int,
     private val onLevel: (Float) -> Unit,
     private val onSilenced: () -> Unit,
+    /** The microphone stopped delivering audio (e.g. the audio server died). */
+    private val onReadError: () -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
     private var record: AudioRecord? = null
@@ -81,7 +83,13 @@ class PcmRecorder(
         var lastLevel = 0L
         while (running) {
             val n = r.read(chunk, 0, chunk.size)
-            if (n <= 0) continue
+            if (n < 0) {
+                // ERROR_DEAD_OBJECT / ERROR_INVALID_OPERATION: stop instead of spinning.
+                running = false
+                main.post(onReadError)
+                break
+            }
+            if (n == 0) continue
             synchronized(buffer) {
                 if (buffer.size() + n <= maxBytes) buffer.write(chunk, 0, n)
             }

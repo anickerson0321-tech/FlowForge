@@ -107,10 +107,10 @@ class AccessibilityInserter(private val undo: UndoHistory = UndoHistory(5), priv
         if (!field.paste()) return InsertResult.Manual("This app didn't accept a paste. The text is on your clipboard.")
         if (clearAfter) clipboard.clearSoon()
         val verified = plan != null && field.refreshedText() == plan.newText
-        if (verified) undo.push(UndoRecord(plan!!, field.key, clock()))
-        return InsertResult.Inserted(
-            InsertionMethod.PASTE, verified, undoable = verified && field.target.supportsSetText, app = field.target.packageName,
-        )
+        // Paste is used for rich editors (and unreadable fields). Undoing it would need
+        // ACTION_SET_TEXT with plain text, which strips formatting, mentions and links there, so
+        // paste insertions are deliberately not undoable.
+        return InsertResult.Inserted(InsertionMethod.PASTE, verified, undoable = false, app = field.target.packageName)
     }
 
     fun undoLast(field: AccessibleField?): UndoOutcome {

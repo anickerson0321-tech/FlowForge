@@ -55,6 +55,7 @@ class MainActivity : Activity() {
         private set
     private var screen: Screen? = null
     private var contentScroll: ScrollView? = null
+    private var contentView: View? = null
     private val backCallback = OnBackInvokedCallback { navigate(Dest.HOME) }
     private var backRegistered = false
     private var firstResume = true
@@ -86,8 +87,9 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // Permissions or system settings may have changed while the user was away.
-        if (firstResume) firstResume = false else refresh()
+        // Screens that show setup status refresh, since permissions or system settings may have
+        // changed while the user was away. Others keep their state (e.g. a half-typed API key).
+        if (firstResume) firstResume = false else if (screen?.refreshOnResume == true) refresh()
     }
 
     override fun onPause() {
@@ -102,9 +104,10 @@ class MainActivity : Activity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Fold/unfold, rotation or a size change: rebuild the layout for the new width.
+        // Fold/unfold, rotation or a size change: rebuild the surrounding layout for the new width
+        // but keep the current screen's views, so typed text and an in-app test session survive.
         val scrollY = contentScroll?.scrollY ?: 0
-        rebuild()
+        rebuild(keepContent = true)
         contentScroll?.post { contentScroll?.scrollTo(0, scrollY) }
     }
 
@@ -124,12 +127,22 @@ class MainActivity : Activity() {
         contentScroll?.post { contentScroll?.scrollTo(0, scrollY) }
     }
 
-    private fun rebuild() {
-        screen?.onDestroy()
+    private fun rebuild(keepContent: Boolean = false) {
         val ui = Ui(this)
-        val s = createScreen(current)
-        screen = s
-        val content = s.build(ui)
+        val kept = contentView?.takeIf { keepContent && screen != null }
+        val s: Screen
+        val content: View
+        if (kept != null) {
+            s = screen!!
+            content = kept
+            (kept.parent as? ViewGroup)?.removeView(kept)
+        } else {
+            screen?.onDestroy()
+            s = createScreen(current)
+            screen = s
+            content = s.build(ui)
+            contentView = content
+        }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false

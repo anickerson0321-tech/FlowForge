@@ -67,6 +67,10 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
 
     fun release() = controller.release()
 
+    fun cancelIfActive() {
+        if (controller.state.isActive) controller.cancel()
+    }
+
     // BubbleView callbacks
     override fun onBubbleTap() {
         if (!com.flowforge.dictation.ui.Setup.hasMic(host)) {
@@ -78,7 +82,7 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
     }
 
     override fun onBubbleLongPress() {
-        if (controller.state.isRecording) controller.cancel()
+        if (controller.state.isActive) controller.cancel()
     }
 
     override fun onDragStart() = Unit

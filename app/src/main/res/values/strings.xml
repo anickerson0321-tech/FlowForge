@@ -1,3 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FlowForge</string>
+    <string name="accessibility_label">FlowForge text insertion</string>
+    <string name="accessibility_description">FlowForge uses this service only to put the text you dictate into the text field you are typing in.\n\nWhat it does: when you finish a dictation with the FlowForge bubble, it finds the focused text field and inserts your words at the cursor (or replaces your selection).\n\nWhat it does not do: it never reads, stores or sends the content of other apps, never acts on password fields, and does nothing while you are not dictating.\n\nYou can use the FlowForge Voice Keyboard instead if you prefer not to enable this service.</string>
+    <string name="ime_label">FlowForge Voice Keyboard</string>
+    <string name="ime_subtype_label">Voice dictation</string>
+    <string name="tile_label">FlowForge bubble</string>
+    <string name="notif_channel_dictation">Dictation bubble</string>
+    <string name="notif_channel_dictation_desc">Shown while the floating dictation bubble is available. Required by Android for microphone access.</string>
+    <string name="notif_channel_alerts">Problems</string>
+    <string name="notif_channel_alerts_desc">Tells you when the bubble could not start or stopped unexpectedly.</string>
 </resources>

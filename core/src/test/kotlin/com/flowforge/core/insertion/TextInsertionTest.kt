@@ -160,4 +160,12 @@ class TextInsertionTest {
         assertEquals(InsertionDecision.Insert(InsertionMethod.MANUAL), decide(field(paste = false), InsertionPreference.PASTE))
         assertEquals(InsertionDecision.Insert(InsertionMethod.MANUAL), decide(field(), InsertionPreference.PREVIEW))
     }
+
+    @Test
+    fun `switching apps mid dictation requires confirmation`() {
+        assertTrue(InsertionPolicy.requiresConfirmation("com.chat", "com.mail"))
+        assertFalse(InsertionPolicy.requiresConfirmation("com.chat", "com.chat"))
+        assertFalse(InsertionPolicy.requiresConfirmation(null, "com.chat"))
+        assertFalse(InsertionPolicy.requiresConfirmation("com.chat", null))
+    }
 }

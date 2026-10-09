@@ -72,7 +72,6 @@ dependencies {
         androidLinkJar(libs.android.link)
     }
     implementation(project(":core"))
-    implementation(libs.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
 }
@@ -273,7 +272,7 @@ fun registerPackage(variant: String, link: TaskProvider<Exec>) = tasks.register(
     doLast {
         val target = out.get().asFile
         target.parentFile.mkdirs()
-        // META-INF/services files are needed at runtime (e.g. coroutines' Main dispatcher).
+        // META-INF/services files are needed at runtime by ServiceLoader-based libraries.
         val services = sortedMapOf<String, StringBuilder>()
         runtimeJars.get().filter { it.name.endsWith(".jar") }.forEach { jar ->
             ZipFile(jar).use { zip ->

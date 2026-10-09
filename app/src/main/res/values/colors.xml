@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- FlowForge palette: warm "ember" accent on ink/sand neutrals. -->
+    <color name="ff_background">#FFFBF7F3</color>
+    <color name="ff_surface">#FFFFFFFF</color>
+    <color name="ff_surface_variant">#FFF2ECE6</color>
+    <color name="ff_on_surface">#FF1B1C22</color>
+    <color name="ff_on_surface_variant">#FF5C5A61</color>
+    <color name="ff_outline">#FFD9D1C9</color>
+    <color name="ff_accent">#FFD9532A</color>
+    <color name="ff_on_accent">#FFFFFFFF</color>
+    <color name="ff_accent_container">#FFFFDCCD</color>
+    <color name="ff_on_accent_container">#FF3A1205</color>
+    <color name="ff_recording">#FFD32F2F</color>
+    <color name="ff_success">#FF2E7D4F</color>
+    <color name="ff_warning">#FFB26A00</color>
+    <color name="ff_error">#FFB3261E</color>
+    <color name="ff_launcher_bg">#FF14161F</color>
+    <color name="ff_launcher_fg">#FFFF7A45</color>
+</resources>

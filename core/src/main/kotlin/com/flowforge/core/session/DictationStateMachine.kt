@@ -12,7 +12,8 @@ data class SessionState(
     val committed: String = "",
     /** In-progress hypothesis for the current segment; shown in the bubble, never inserted. */
     val partial: String = "",
-    val levelDb: Float = 0f,
+    /** Input level 0..1 for meters. */
+    val level: Float = 0f,
     val error: RecognitionError? = null,
     /** Text captured before an interruption or error; offered for manual copy, never auto-inserted. */
     val recoveredText: String = "",
@@ -51,7 +52,7 @@ sealed class SessionEvent {
     data class Partial(val sessionId: Int, val text: String) : SessionEvent()
     data class Segment(val sessionId: Int, val text: String) : SessionEvent()
     data class Final(val sessionId: Int, val text: String) : SessionEvent()
-    data class Level(val sessionId: Int, val db: Float) : SessionEvent()
+    data class Level(val sessionId: Int, val level: Float) : SessionEvent()
     data class Failed(val sessionId: Int, val error: RecognitionError) : SessionEvent()
 }
 
@@ -106,7 +107,7 @@ class DictationStateMachine(private val minRestartIntervalMs: Long = 350) {
             if (state.isRecording) Transition(state.copy(phase = Phase.LISTENING, partial = event.text)) else Transition(state)
         }
         is SessionEvent.Level -> ifCurrent(state, event.sessionId) {
-            if (state.isRecording) Transition(state.copy(levelDb = event.db)) else Transition(state)
+            if (state.isRecording) Transition(state.copy(level = event.level)) else Transition(state)
         }
         is SessionEvent.Segment -> ifCurrent(state, event.sessionId) {
             if (state.isActive) {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ff_background">#FF101115</color>
+    <color name="ff_surface">#FF1A1C22</color>
+    <color name="ff_surface_variant">#FF262830</color>
+    <color name="ff_on_surface">#FFECE7E2</color>
+    <color name="ff_on_surface_variant">#FFB9B3AD</color>
+    <color name="ff_outline">#FF3B3D46</color>
+    <color name="ff_accent">#FFFF8A5C</color>
+    <color name="ff_on_accent">#FF3A1205</color>
+    <color name="ff_accent_container">#FF5C2410</color>
+    <color name="ff_on_accent_container">#FFFFDCCD</color>
+    <color name="ff_recording">#FFFF6B6B</color>
+    <color name="ff_success">#FF7BD3A0</color>
+    <color name="ff_warning">#FFFFC266</color>
+    <color name="ff_error">#FFF2B8B5</color>
+</resources>

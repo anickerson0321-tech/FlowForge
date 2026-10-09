@@ -1,6 +1,5 @@
 [versions]
 kotlin = "2.2.21"
-coroutines = "1.10.2"
 junit = "4.13.2"
 # org.json ships inside Android; this artifact is only for compiling core and running JVM tests.
 orgJson = "20250517"
@@ -11,9 +10,6 @@ androidCompile = "16-robolectric-13921718"
 androidLink = "14-robolectric-10818077"
 
 [libraries]
-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 junit = { module = "junit:junit", version.ref = "junit" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }

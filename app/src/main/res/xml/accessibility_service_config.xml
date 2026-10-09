@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FlowForge only needs to find the focused text field and type into it when YOU finish a dictation.
+  It subscribes to focus events only, never reads other windows proactively, and stores nothing.
+  It is not declared as an accessibility tool (isAccessibilityTool=false) per Google Play policy.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewFocused"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="200"
+    android:settingsActivity="com.flowforge.dictation.ui.MainActivity" />

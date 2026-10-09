@@ -36,7 +36,7 @@ object ConsentPolicy {
 
     /**
      * Host of an https URL, or null if the URL is not https. Plain http is only accepted for
-     * localhost-style development hosts; the app never sends audio unencrypted over the internet.
+     * servers on this device; the app never sends audio unencrypted over a network.
      */
     fun hostOf(url: String): String? {
         val trimmed = url.trim()
@@ -51,14 +51,12 @@ object ConsentPolicy {
         }
     }
 
-    /** Loopback, mDNS (.local) and private IPv4 ranges: the only hosts allowed over plain http. */
-    fun isLocalHost(host: String): Boolean {
-        if (host == "localhost" || host.endsWith(".local")) return true
-        val octets = host.split('.')
-        if (octets.size != 4) return false
-        val n = octets.map { it.toIntOrNull()?.takeIf { v -> v in 0..255 } ?: return false }
-        return n[0] == 127 || n[0] == 10 || (n[0] == 192 && n[1] == 168) || (n[0] == 172 && n[1] in 16..31)
-    }
+    /**
+     * Only servers on the phone itself may use plain http (for example a Whisper server running in
+     * a terminal app). Everything else must be https; the app's network security config enforces
+     * the same rule at the platform level.
+     */
+    fun isLocalHost(host: String): Boolean = host == "localhost" || host == "127.0.0.1" || host == "[::1]"
 
     private val URL_PATTERN = Regex("""(?i)(https?)://([^/:?#\s]+)(:\d+)?(/[^\s]*)?""")
 

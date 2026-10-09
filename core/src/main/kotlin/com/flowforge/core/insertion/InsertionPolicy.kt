@@ -83,4 +83,11 @@ object InsertionPolicy {
         }
         return InsertionDecision.Insert(method)
     }
+
+    /**
+     * App-switch safety: if the focused app changed between starting and finishing a dictation,
+     * the text is shown for confirmation instead of being typed into an app the user may not expect.
+     */
+    fun requiresConfirmation(packageAtStart: String?, packageNow: String?): Boolean =
+        packageAtStart != null && packageNow != null && packageAtStart != packageNow
 }

@@ -25,13 +25,13 @@ class PrivacyTest {
     }
 
     @Test
-    fun `plain http is only allowed for local development hosts`() {
+    fun `plain http is only allowed for servers on this device`() {
         assertNull(ConsentPolicy.hostOf("http://api.example.com/v1"))
         assertEquals("localhost", ConsentPolicy.hostOf("http://localhost:8080/v1"))
-        assertEquals("192.168.1.20", ConsentPolicy.hostOf("http://192.168.1.20:9000"))
-        assertEquals("10.0.2.2", ConsentPolicy.hostOf("http://10.0.2.2:8000/v1"))
+        assertEquals("127.0.0.1", ConsentPolicy.hostOf("http://127.0.0.1:8080/v1"))
+        assertNull(ConsentPolicy.hostOf("http://192.168.1.20:9000"))
         assertNull(ConsentPolicy.hostOf("http://10.example.com/v1"))
-        assertNull(ConsentPolicy.hostOf("http://172.32.0.1/v1"))
+        assertEquals("192.168.1.20", ConsentPolicy.hostOf("https://192.168.1.20:9000"))
         assertNull(ConsentPolicy.hostOf("ftp://api.example.com"))
         assertNull(ConsentPolicy.hostOf("not a url"))
         assertNull(ConsentPolicy.grant(CloudPurpose.RECOGNITION, "http://api.example.com", 0))

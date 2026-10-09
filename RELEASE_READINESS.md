@@ -27,7 +27,8 @@ of it has run on a phone or emulator yet** (none was available in the build envi
 | Cloud client (OpenAI-compatible multipart upload, auth, errors, no key leakage) | Tests against a local HTTP server implementing the documented API shape (protocol only) |
 | AI-cleanup output validation (rejects changed numbers/dates/names/negations, commentary) | Unit tests |
 | APK builds, signs (v2+v3), verifies; manifest components, permissions, FGS type | Build output + `aapt2 dump`, `apksigner verify` |
-| No hidden/non-public Android API use; API>33 calls version-guarded | `tools/api_check.py` against AOSP Android 16 & 13 public API (624 references, 0 errors) |
+| No hidden/non-public Android API use; API>33 calls version-guarded | `tools/api_check.py` against AOSP Android 16 & 13 public API (625 references, 0 errors) |
+| Android lifecycle code review | Independent review of services/overlay/IME/engines; all 11 findings fixed (commit 633cf72) — still to be confirmed on a device |
 
 ### Implemented but NOT device-tested
 Everything that needs a running Android system:
@@ -65,7 +66,7 @@ Everything that needs a running Android system:
 - **Bubble start:** a microphone foreground service may only start while FlowForge is visible, so the bubble starts from the app or the Quick Settings tile (which briefly opens an invisible activity), never by itself in the background. If Android or Samsung's battery management kills the process, the bubble does not reappear on its own; Home offers "Restore bubble".
 - **On-device recognition availability** depends on the phone's speech services (Google's on-device recognizer / language packs). FlowForge reports what Android tells it and labels the system service honestly as possibly cloud-based.
 - **Continuous dictation** restarts the recognizer at each pause; a few hundred milliseconds of audio may be missed at a restart, and some recognizers play a sound at start.
-- **Rich-text editors (WebView, Docs):** insertion uses paste, which overwrites the clipboard briefly (cleared afterwards, best effort). Some apps block accessibility actions entirely; the result is then shown for manual copy.
+- **Rich-text editors (WebView, Docs):** insertion uses paste, which overwrites the clipboard briefly (marked sensitive so Android's clipboard preview hides it, and cleared afterwards, best effort). Paste insertions can't be undone by FlowForge, because undo would rewrite the rich field as plain text; use the app's own undo. Some apps block accessibility actions entirely; the result is then shown for manual copy.
 - **App rewriting text** (input filters, emoji): insertion is reported unverified and undo is disabled for that insertion.
 - **Cleanup language:** English rules only.
 - **Build toolchain:** the delivered APK was built with the bootstrap toolchain (dx, distro aapt2, AOSP framework jars from Maven Central), not the official SDK. Public-API compliance is enforced by `tools/api_check.py`.
@@ -108,7 +109,7 @@ Everything that needs a running Android system:
 
 ### Residual risks / to do before release
 - Debug APK is `debuggable` and signed with a public debug key — for testing only.
-- Paste fallback briefly places dictation on the clipboard (Android 13 shows its clipboard preview); clearing afterwards is best effort.
+- Paste fallback briefly places dictation on the clipboard (marked sensitive; cleared afterwards, best effort).
 - Accessibility service is powerful by nature; the code subscribes only to focus events and ignores them, but Google Play reviews such apps strictly (§4).
 - Independent security review and a written privacy policy are still needed.
 

@@ -35,8 +35,9 @@ Last updated: 2026-10-09 (session 1).
       **Local Whisper engine not implemented** (needs NDK/models; blocked and untestable here).
 - [x] Phase 4 — foldable layouts, settings, history, onboarding, accessibility labels, crash-safe
       fallbacks, privacy controls.
-- [~] Phase 5 — automated regression tests (143 JVM tests + API check), policy review, release
-      config path and docs done; **device testing, AAB/R8 and Play paperwork not done.**
+- [~] Phase 5 — automated regression tests (145 JVM tests + API check), independent code review
+      (all findings fixed), policy review, release config path and docs done; **device testing,
+      AAB/R8 and Play paperwork not done.**
 
 ## Where things are
 | Path | What |

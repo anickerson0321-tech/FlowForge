@@ -25,9 +25,16 @@ Reproduce everything with:
 | core · CloudClientTest | 13 | ✅ pass | OpenAI-compatible protocol vs a local HTTP server, error mapping, key redaction, AI-cleanup validation, WAV/RMS helpers |
 | core · GeometryTest | 7 | ✅ pass | Bubble position across rotation and fold/unfold area changes, edge snapping, two-pane breakpoint |
 | app · FieldInspectorTest | 7 | ✅ pass | Password/sensitive/hint/unreliable-text detection using the **real Android 16 `AccessibilityNodeInfo`** class |
-| **Total** | **143** | **✅ 143 passed, 0 failed, 0 skipped** | |
-| Public-API check (`tools/api_check.py`) | 624 refs | ✅ PASS | Every `android.*` reference in app+core bytecode resolved against AOSP Android 16 public API; 0 non-public; API>33 calls guarded |
+| app · SpeechConstantsTest | 2 | ✅ pass | Core's copy of `SpeechRecognizer` error codes equals the Android 16 framework values; language-pack status wording |
+| **Total** | **145** | **✅ 145 passed, 0 failed, 0 skipped** | |
+| Public-API check (`tools/api_check.py`) | 625 refs | ✅ PASS | Every `android.*` reference in app+core bytecode resolved against AOSP Android 16 public API; 0 non-public; API>33 calls guarded |
 | APK build + `apksigner verify` | — | ✅ pass | v2+v3 signatures; package metadata below |
+
+Code review: an independent review pass over the Android services/lifecycle code (no device
+available) found 7 issues plus 4 minor ones (overlay window leak race, Preview-mode Insert, test
+recording continuing in background, taps lost during live transcript updates, undo on rich fields,
+a race-only foreground-service crash, no cancel during processing, …). All were fixed in commit
+`633cf72`; they are logic fixes that still need device confirmation.
 
 Notes on test doubles (no simulated results stand in for FlowForge's own behavior):
 - `InsertersTest` simulates *other apps' fields* (an EditText behind accessibility, an

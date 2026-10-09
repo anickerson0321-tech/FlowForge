@@ -7,6 +7,6 @@ keystore.properties
 .idea/
 *.iml
 .DS_Store
-/dist/*.apk
+# dist/FlowForge-debug.apk is committed so testers can download it directly; the source zip is not.
 /dist/*.zip
 captures/

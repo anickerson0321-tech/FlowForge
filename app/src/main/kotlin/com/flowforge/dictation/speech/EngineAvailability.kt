@@ -50,7 +50,7 @@ object EngineAvailability {
             val want = normalize(tag)
             return when {
                 error != null -> "Couldn't check language packs: $error"
-                installed.any { normalize(it) == want } -> "Installed — works offline"
+                installed.any { normalize(it) == want } -> "Installed on this phone (required for offline use)"
                 pending.any { normalize(it) == want } -> "Downloading…"
                 supported.any { normalize(it) == want } -> "Available to download"
                 else -> "Not supported on-device"

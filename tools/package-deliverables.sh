@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 mkdir -p dist
 cp app/build/outputs/apk/debug/FlowForge-debug.apk dist/FlowForge-debug.apk
 git archive --format=zip --prefix=FlowForge/ -o dist/FlowForge-source.zip HEAD
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain -- . ':!dist')" ]; then
   echo "WARNING: uncommitted changes are NOT in FlowForge-source.zip (it contains HEAD only)." >&2
 fi
 sha256sum dist/FlowForge-debug.apk dist/FlowForge-source.zip

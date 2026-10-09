@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 ./gradlew check assembleDebug --console=plain
 mkdir -p dist
 cp app/build/outputs/apk/debug/FlowForge-debug.apk dist/FlowForge-debug.apk
-git archive --format=zip --prefix=FlowForge/ -o dist/FlowForge-source.zip HEAD
+git archive --format=zip --prefix=FlowForge/ -o dist/FlowForge-source.zip HEAD -- . ':!dist'
 if [ -n "$(git status --porcelain -- . ':!dist')" ]; then
   echo "WARNING: uncommitted changes are NOT in FlowForge-source.zip (it contains HEAD only)." >&2
 fi

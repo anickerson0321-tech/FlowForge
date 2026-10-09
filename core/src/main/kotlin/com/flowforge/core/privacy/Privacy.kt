@@ -63,7 +63,8 @@ object ConsentPolicy {
     fun noticeText(purpose: CloudPurpose, host: String): String = when (purpose) {
         CloudPurpose.RECOGNITION ->
             "When you dictate with the cloud engine, FlowForge records your voice and uploads the audio to $host " +
-                "over an encrypted connection for transcription. $host's own privacy policy and retention rules apply. " +
+                "over an encrypted connection for transcription, together with up to 50 words from your personal " +
+                "dictionary as spelling hints. $host's own privacy policy and retention rules apply. " +
                 "Audio is held in memory only and is not saved on this phone. You can withdraw consent at any time " +
                 "in Privacy settings; FlowForge then stops uploading immediately."
         CloudPurpose.AI_CLEANUP ->

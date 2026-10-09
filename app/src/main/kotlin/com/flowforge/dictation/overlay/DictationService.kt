@@ -77,6 +77,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
     private var showingOriginal = false
     /** Last (phase, text, error) the panel showed; level-only updates must not rebuild it. */
     private var lastPanelKey: Any? = null
+    private var lastPhase: Phase = Phase.IDLE
     /** Keep the green check visible briefly after a successful insertion. */
     private var doneUntil = 0L
 
@@ -384,9 +385,14 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
             getSystemService(NotificationManager::class.java)
                 .notify(Notifications.ID_SERVICE, Notifications.serviceNotification(this, recording))
         }
+        val previousPhase = lastPhase
+        lastPhase = state.phase
         val panelKey = Triple(state.phase, state.displayText, state.error)
         if (panelKey == lastPanelKey) return
         lastPanelKey = panelKey
+        // Recording -> idle means the user cancelled: close the live panel. (Processing -> idle is a
+        // delivery, whose result panel deliver() has just shown.)
+        if (state.phase == Phase.IDLE && (previousPhase == Phase.STARTING || previousPhase == Phase.LISTENING)) panel.hide()
         when (state.phase) {
             Phase.STARTING -> showPanel("Starting microphone…", null, emptyList())
             Phase.LISTENING -> showPanel(

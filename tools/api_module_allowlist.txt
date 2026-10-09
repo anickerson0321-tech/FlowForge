@@ -1,0 +1,9 @@
+# Public Android APIs that are defined in mainline-module API files (not in frameworks/base
+# core/api/current.txt), so tools/api_check.py cannot see them. Each entry was checked against the
+# public developer reference. Format: the exact label printed by api_check.py.
+#
+# Connectivity module (packages/modules/Connectivity), public since the listed API level.
+class android.net.ConnectivityManager                                                      # API 1
+Method android.net.ConnectivityManager.getActiveNetwork()Landroid/net/Network;              # API 23
+Method android.net.ConnectivityManager.getNetworkCapabilities(Landroid/net/Network;)Landroid/net/NetworkCapabilities;  # API 21
+Method android.net.NetworkCapabilities.hasCapability(I)Z                                   # API 21

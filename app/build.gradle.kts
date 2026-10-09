@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.ByteArrayOutputStream
 import java.util.Properties
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -415,3 +416,31 @@ tasks.register("assembleRelease") {
     description = "Builds and signs FlowForge-release.apk with the key from keystore.properties."
     dependsOn(verifyReleaseApk)
 }
+
+// ---------------------------------------------------------------------------------------------
+// Public API check (see tools/api_check.py)
+// ---------------------------------------------------------------------------------------------
+val apiCheck by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Fails if app/core bytecode uses non-public Android APIs or unguarded APIs newer than minSdk."
+    dependsOn(tasks.named("classes"), ":core:classes")
+    val dirs = listOf(
+        layout.buildDirectory.dir("classes/kotlin/main").get().asFile,
+        project(":core").layout.buildDirectory.dir("classes/kotlin/main").get().asFile,
+    )
+    inputs.files(dirs)
+    inputs.files(rootProject.files("tools/api_check.py", "tools/api_module_allowlist.txt", "tools/api_guarded_allowlist.txt"))
+    val report = layout.buildDirectory.file("reports/api-check.txt")
+    outputs.file(report)
+    commandLine(listOf("python3", rootProject.file("tools/api_check.py").path) + dirs.map { it.path })
+    isIgnoreExitValue = true
+    standardOutput = ByteArrayOutputStream()
+    doLast {
+        val text = standardOutput.toString()
+        report.get().asFile.apply { parentFile.mkdirs(); writeText(text) }
+        logger.lifecycle(text.lineSequence().filter { it.startsWith("Checked") || it.startsWith("ERRORS") || it.startsWith("RESULT") }.joinToString("\n"))
+        if (executionResult.get().exitValue != 0) throw GradleException("API check failed; see ${report.get().asFile}")
+    }
+}
+
+tasks.named("check") { dependsOn(apiCheck) }

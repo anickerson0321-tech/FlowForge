@@ -1,0 +1,4 @@
+# Calls to APIs newer than minSdk 33 that were reviewed and are guarded by Build.VERSION.SDK_INT
+# checks. Format: the exact label printed by tools/api_check.py.
+# BubbleTileService.onClick: `if (Build.VERSION.SDK_INT >= 34)`; API 33 uses startActivityAndCollapse(Intent).
+Method android.service.quicksettings.TileService.startActivityAndCollapse(Landroid/app/PendingIntent;)V

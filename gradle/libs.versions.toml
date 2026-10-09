@@ -1,0 +1,24 @@
+[versions]
+kotlin = "2.2.21"
+coroutines = "1.10.2"
+junit = "4.13.2"
+# org.json ships inside Android; this artifact is only for compiling core and running JVM tests.
+orgJson = "20250517"
+# Android framework jars published by the Robolectric project (built from AOSP release tags).
+# compile: Android 16 / API 36 (BLR2.250402.052). link: Android 14 / API 34 (UP1A.231105.001),
+# used only for aapt2 resource linking because Ubuntu's aapt2 cannot parse newer resource tables.
+androidCompile = "16-robolectric-13921718"
+androidLink = "14-robolectric-10818077"
+
+[libraries]
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+junit = { module = "junit:junit", version.ref = "junit" }
+org-json = { module = "org.json:json", version.ref = "orgJson" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+android-compile = { module = "org.robolectric:android-all", version.ref = "androidCompile" }
+android-link = { module = "org.robolectric:android-all", version.ref = "androidLink" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

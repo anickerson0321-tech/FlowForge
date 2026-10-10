@@ -56,7 +56,12 @@ data class DeliveryReport(val outcome: String, val targetApp: String)
  * recording lifecycle (via the pure [DictationStateMachine]), cleanup and hand-off for insertion.
  * Main thread only.
  */
-class DictationController(private val context: Context, private val surface: Surface) {
+class DictationController(
+    private val context: Context,
+    private val surface: Surface,
+    /** Keep the offline model loaded while this surface exists (the bubble); false loads on demand. */
+    private val keepModelLoaded: Boolean = false,
+) {
 
     interface Surface {
         val surfaceName: String
@@ -86,10 +91,10 @@ class DictationController(private val context: Context, private val surface: Sur
     init {
         // Warm the dictionary cache off the main thread so cleanup and vocabulary hints are ready.
         graph.io.execute { runCatching { graph.dictionary.current() } }
-        // Keep the offline model loaded while this surface is open, and start loading it now.
-        LocalAsr.hold(this)
+        // The bubble keeps the offline model loaded while it is shown, and starts loading it now.
+        if (keepModelLoaded) LocalAsr.hold(this)
         val settings = graph.settings
-        if (settings.dictation.engine == EngineKind.LOCAL_MODEL) {
+        if (keepModelLoaded && settings.dictation.engine == EngineKind.LOCAL_MODEL) {
             graph.background({ LocalAsr.status(context, settings) }) { r ->
                 if (!released && r.getOrNull() == com.flowforge.core.recognition.LocalModelStatus.READY) {
                     LocalAsr.preload(context, LocalAsr.selectedModel(settings))
@@ -128,7 +133,7 @@ class DictationController(private val context: Context, private val surface: Sur
         if (state.isActive) dispatch(SessionEvent.Interrupted("dictation surface closed"))
         released = true
         releaseEngine()
-        LocalAsr.unhold(this)
+        if (keepModelLoaded) LocalAsr.unhold(this)
         handler.removeCallbacksAndMessages(null)
     }
 

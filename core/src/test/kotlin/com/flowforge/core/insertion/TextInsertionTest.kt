@@ -94,14 +94,6 @@ class TextInsertionTest {
     }
 
     @Test
-    fun `cursor relative undo for keyboards`() {
-        val plan = TextInsertionPlanner.plan(FieldState("Meet on Thursday", 8, 16), "Friday")
-        val record = UndoRecord(plan, "k", 0)
-        assertEquals(6 to "Thursday", record.cursorRelativeUndo("Meet on Friday"))
-        assertNull(record.cursorRelativeUndo("Meet on Fridays"))
-    }
-
-    @Test
     fun `undo history is bounded and most recent first`() {
         val h = UndoHistory(capacity = 2)
         val p = TextInsertionPlanner.plan(FieldState("", 0, 0), "a")

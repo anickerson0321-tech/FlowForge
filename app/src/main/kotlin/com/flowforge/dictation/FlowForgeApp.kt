@@ -22,6 +22,14 @@ class FlowForgeApp : Application() {
         graph = AppGraph(this)
         Notifications.createChannels(this)
         graph.io.execute { graph.history.purgeExpired() }
+        // A download interrupted by the process dying leaves a large temporary folder. No download
+        // can be running yet (this runs before any service starts), so it's safe to remove here.
+        runCatching { com.flowforge.dictation.speech.LocalAsr.installer(this).deleteLeftovers() }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_BACKGROUND) com.flowforge.dictation.speech.LocalAsr.trimMemory()
     }
 }
 

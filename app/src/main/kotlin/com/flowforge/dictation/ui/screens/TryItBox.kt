@@ -34,6 +34,7 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
     private lateinit var mic: BubbleView
     private var lastOutput: DictationOutput? = null
     private var holdMode = false
+    private var holdInCancelZone = false
     private var holdStartedAt = 0L
 
     fun build(): View {
@@ -94,6 +95,7 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
         if (state.isRecording || state.phase == Phase.PROCESSING) return
         if (state.phase == Phase.ERROR) controller.dismiss()
         holdMode = true
+        holdInCancelZone = false
         holdStartedAt = SystemClock.uptimeMillis()
         controller.start()
     }
@@ -101,19 +103,19 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
     override fun onHoldEnd(cancel: Boolean) {
         val wasHold = holdMode
         holdMode = false
+        holdInCancelZone = false
         if (!controller.state.isRecording) return
         when {
             cancel -> controller.cancel()
-            wasHold && SystemClock.uptimeMillis() - holdStartedAt < 450 -> {
-                controller.cancel()
-                host.toast("Keep holding the mic while you talk, or tap it once to start and again to finish.")
-            }
+            // Too short to be hold-to-talk: treat it as a (slow) tap and keep recording.
+            wasHold && SystemClock.uptimeMillis() - holdStartedAt < 450 -> onStateChanged(controller.state)
             else -> controller.stop()
         }
     }
 
     override fun onHoldCancelZone(inZone: Boolean) {
-        if (controller.state.isRecording) status.text = if (inZone) "Release to cancel." else "Listening: ${controller.state.displayText.ifBlank { "speak now" }}"
+        holdInCancelZone = inZone
+        onStateChanged(controller.state)
     }
 
     override fun onDragStart() = Unit
@@ -135,7 +137,11 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
         status.text = when (state.phase) {
             Phase.IDLE -> idleStatus()
             Phase.STARTING -> "Starting microphone…"
-            Phase.LISTENING -> (if (holdMode) "Listening (release to finish): " else "Listening (tap to finish): ") + state.displayText.ifBlank { "speak now" }
+            Phase.LISTENING -> when {
+                holdMode && holdInCancelZone -> "Release to cancel."
+                holdMode -> "Listening (release to finish): " + state.displayText.ifBlank { "speak now" }
+                else -> "Listening (tap to finish): " + state.displayText.ifBlank { "speak now" }
+            }
             Phase.PROCESSING -> "Processing…"
             Phase.ERROR -> state.error?.let { "${it.message} ${it.suggestion}" + if (state.recoveredText.isNotBlank()) " Captured: “${state.recoveredText}”" else "" } ?: ""
         }

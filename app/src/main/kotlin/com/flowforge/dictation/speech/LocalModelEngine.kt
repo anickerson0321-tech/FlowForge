@@ -33,8 +33,9 @@ class LocalModelEngine(
     private val pending = AtomicInteger(0)
     private var stopping = false
     private var flushed = false
-    private var done = false
+    @Volatile private var done = false
     @Volatile private var cancelled = false
+    private var using = false
     private var stopAt = 0L
 
     override fun start(sessionId: Int, request: EngineRequest, sink: (SessionEvent) -> Unit) {
@@ -48,8 +49,13 @@ class LocalModelEngine(
         EngineMetrics.lastEngine = name
         EngineMetrics.sessions++
         val started = SystemClock.elapsedRealtime()
-        // Load (or keep) the model while the user talks.
-        LocalAsr.preload(context, model)
+        using = true
+        LocalAsr.beginUse()
+        // Load (or keep) the model while the user talks. If it can't load, say so right away
+        // instead of letting the user talk into a recognizer that will never answer.
+        LocalAsr.preload(context, model) { error ->
+            if (error != null && sessionId == this.sessionId) fail(sessionId, error)
+        }
         synchronized(lock) { chunker = SpeechChunker() }
         val rec = PcmRecorder(
             context, maxSeconds,
@@ -82,6 +88,7 @@ class LocalModelEngine(
         val id = sessionId
         LocalAsr.run(
             context, model,
+            skip = { cancelled || done },
             work = { t ->
                 try {
                     if (cancelled) "" else t.transcribe(chunk.samples)
@@ -100,21 +107,34 @@ class LocalModelEngine(
         r.fold(
             onSuccess = { text -> if (text.isNotBlank()) sink?.invoke(SessionEvent.Segment(id, text)) },
             onFailure = { e ->
-                done = true
-                sink?.invoke(
-                    SessionEvent.Failed(
-                        id,
-                        RecognitionErrors.engineUnavailable(
-                            e.message ?: "The offline model failed.",
-                            "Try again. If it keeps failing, delete and re-download the model in Speech settings, or choose another engine.",
-                        ),
-                    ),
-                )
-                cancelRecording()
+                fail(id, e)
                 return
             },
         )
         finishIfDone()
+    }
+
+    private fun fail(id: Int, e: Throwable) {
+        if (cancelled || done || id != sessionId) return
+        done = true
+        cancelRecording()
+        endUse()
+        sink?.invoke(
+            SessionEvent.Failed(
+                id,
+                RecognitionErrors.engineUnavailable(
+                    e.message ?: "The offline model failed.",
+                    "Dictate again to use Android's recognizer instead. To fix the offline model, delete and re-download it (or pick the smaller one) in Speech settings.",
+                ),
+            ),
+        )
+    }
+
+    private fun endUse() {
+        if (using) {
+            using = false
+            LocalAsr.endUse()
+        }
     }
 
     override fun stop() {
@@ -136,6 +156,7 @@ class LocalModelEngine(
     private fun finishIfDone() {
         if (!stopping || !flushed || done || pending.get() > 0) return
         done = true
+        endUse()
         EngineMetrics.lastFinalLatencyMs = SystemClock.elapsedRealtime() - stopAt
         // Every piece was already delivered as a Segment; Final closes the dictation.
         sink?.invoke(SessionEvent.Final(sessionId, ""))
@@ -144,6 +165,7 @@ class LocalModelEngine(
     override fun cancel() {
         cancelled = true
         cancelRecording()
+        endUse()
     }
 
     private fun cancelRecording() {

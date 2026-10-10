@@ -60,11 +60,12 @@ class PermissionsScreen(host: MainActivity) : Screen(host) {
             when (local) {
                 LocalModelStatus.READY -> "Installed."
                 LocalModelStatus.NOT_DOWNLOADED -> "Recommended. A one-time download (250–480 MB, Wi-Fi recommended) that gives the most accurate results and works with no internet. " +
-                    if (onDevice || system) "Until then, Android's speech recognizer is used." else "No other speech recognizer was found on this phone, so this is needed."
+                    if (onDevice || system) "Until then, Android's speech recognizer is used (unless you turned off fallback)." else "No other speech recognizer was found on this phone, so this is needed."
                 LocalModelStatus.LANGUAGE_UNSUPPORTED -> "The offline models are English-only, and your dictation language isn't English. Android's recognizer is used instead."
                 LocalModelStatus.DEVICE_UNSUPPORTED -> "This phone can't run the offline model; Android's recognizer is used instead."
+                LocalModelStatus.LOAD_FAILED -> "The model is installed but couldn't be loaded (${LocalAsr.lastError ?: "unknown error"}). Delete and re-download it, or try the smaller model, in Speech engine."
             },
-            if (local == LocalModelStatus.NOT_DOWNLOADED) "Choose a model" else null) { host.navigate(MainActivity.Dest.ENGINE) }
+            if (local == LocalModelStatus.NOT_DOWNLOADED || local == LocalModelStatus.LOAD_FAILED) "Speech engine settings" else null) { host.navigate(MainActivity.Dest.ENGINE) }
 
         col.addView(ui.button(if (firstRun) "Start using FlowForge" else "Done", Ui.ButtonStyle.FILLED) {
             graph.settings.onboardingDone = true
@@ -138,7 +139,7 @@ class HelpScreen(host: MainActivity) : Screen(host) {
             "Text isn't inserted: turn on “FlowForge text insertion” (Setup & permissions, step 4). Password and payment fields are always skipped. Some apps block automated typing; use Copy.",
             "“Restricted setting” when turning on text insertion: first try to turn it on once and tap OK, then Settings → Apps → FlowForge → ⋮ (top right) → Allow restricted settings, then turn it on again.",
             "Words missing or recognition cutting in and out: download the offline speech model (Speech engine). It records continuously instead of restarting between sentences.",
-            "Recording stops on its own: tap-to-talk stops at the maximum length (Dictation settings).",
+            "Recording stops on its own: at the maximum length (Dictation settings), and with Android's recognizer also after 20 seconds of silence.",
             "Bubble disappears after a while: Samsung may close background apps. Settings → Apps → FlowForge → Battery → Unrestricted.",
             "Works offline? Yes with the FlowForge offline model once it's downloaded. Android's on-device engine also works offline if its language pack is installed (Speech engine → Check).",
         )

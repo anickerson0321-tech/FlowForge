@@ -77,6 +77,9 @@ class EngineSelectionTest {
         val sysOnly = EngineSelector.select(EnginePreference(), env(onDevice = false, local = LocalModelStatus.NOT_DOWNLOADED)) as EngineSelection.Use
         assertEquals(EngineKind.SYSTEM, sysOnly.kind)
         assertTrue(sysOnly.note!!.contains("may send audio"))
+        val broken = EngineSelector.select(EnginePreference(), env(local = LocalModelStatus.LOAD_FAILED)) as EngineSelection.Use
+        assertEquals(EngineKind.ON_DEVICE, broken.kind)
+        assertTrue(broken.note!!.contains("couldn't be loaded"))
         val english = EngineSelector.select(EnginePreference(allowFallback = false), env(local = LocalModelStatus.LANGUAGE_UNSUPPORTED))
         assertTrue((english as EngineSelection.Unavailable).error.message.contains("English"))
         // Android engines that are unavailable fall back to a downloaded offline model, quietly.

@@ -4,7 +4,7 @@ package com.flowforge.core.recognition
 enum class EngineKind(val label: String, val summary: String) {
     LOCAL_MODEL(
         "FlowForge offline model (recommended)",
-        "A Whisper-class speech model that runs inside FlowForge. Audio never leaves this phone and no internet is needed after the one-time model download.",
+        "A high-accuracy speech model (NVIDIA Parakeet or Moonshine) that runs inside FlowForge. Audio never leaves this phone and no internet is needed after the one-time model download.",
     ),
     ON_DEVICE(
         "On-device (Android)",
@@ -34,7 +34,7 @@ fun EngineKind.exposure(): DataExposure = when (this) {
 }
 
 /** Whether FlowForge's own offline model can be used right now. */
-enum class LocalModelStatus { READY, NOT_DOWNLOADED, LANGUAGE_UNSUPPORTED, DEVICE_UNSUPPORTED }
+enum class LocalModelStatus { READY, NOT_DOWNLOADED, LANGUAGE_UNSUPPORTED, DEVICE_UNSUPPORTED, LOAD_FAILED }
 
 data class EngineEnvironment(
     val onDeviceAvailable: Boolean,
@@ -105,11 +105,13 @@ object EngineSelector {
         val why = when (env.localModel) {
             LocalModelStatus.LANGUAGE_UNSUPPORTED -> "The offline model only understands English."
             LocalModelStatus.DEVICE_UNSUPPORTED -> "The offline model can't run on this phone."
+            LocalModelStatus.LOAD_FAILED -> "The offline model couldn't be loaded."
             else -> "The offline model isn't downloaded yet."
         }
         val fix = when (env.localModel) {
             LocalModelStatus.LANGUAGE_UNSUPPORTED -> "Set the dictation language to English, or choose another engine in Speech settings."
             LocalModelStatus.DEVICE_UNSUPPORTED -> "Choose another engine in Speech settings."
+            LocalModelStatus.LOAD_FAILED -> "Delete and re-download it in Speech settings, try the smaller model, or choose another engine."
             else -> "Download it in Speech settings (one time, needs Wi-Fi or data)."
         }
         return when {

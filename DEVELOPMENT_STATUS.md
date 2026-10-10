@@ -41,7 +41,7 @@ Last updated: 2026-10-10 (session 2, version 0.2.0).
       run on a phone**.
 - [x] Phase 4 — foldable layouts, settings, history, onboarding, accessibility labels, crash-safe
       fallbacks, privacy controls.
-- [~] Phase 5 — automated regression tests (162 JVM tests incl. 3 opt-in model tests + API check), independent code review
+- [~] Phase 5 — automated regression tests (163 JVM tests incl. 3 opt-in model tests + API check), independent code review
       (all findings fixed), policy review, release config path and docs done; **device testing,
       AAB/R8 and Play paperwork not done.**
 

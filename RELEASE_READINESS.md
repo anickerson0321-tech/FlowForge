@@ -50,7 +50,7 @@ Everything that needs a running Android system:
 |---|---|
 | Offline model for other languages | The bundled catalog is English-only (Parakeet v2, Moonshine Base). Multilingual models (e.g. Whisper, SenseVoice, Parakeet v3) can be added to `ModelCatalog` after evaluation. |
 | Hotwords / personal dictionary as a recognition hint for the offline model | The dictionary is applied in cleanup; transducer hotword biasing needs a BPE vocabulary file and was not evaluated. |
-| 32-bit ARM and x86 phones | Only arm64-v8a native libraries are packaged (keeps the APK at 13.5 MB). Other ABIs use the Android engines. |
+| 32-bit ARM and x86 devices | Only arm64-v8a native libraries are packaged (keeps the APK at 13.5 MB), so **the APK installs only on 64-bit ARM devices** (`INSTALL_FAILED_NO_MATCHING_ABIS` elsewhere, e.g. 32-bit Android Go phones and x86 emulators). 0.1.0 had no native code and installed anywhere. Adding `armeabi-v7a`/`x86_64` would add ~7–9 MB each. |
 | Jetpack Compose UI | Replaced by framework Views because Google Maven (Compose/AndroidX) was unreachable. All logic is in `:core`, so migrating the UI layer is self-contained. |
 | Robolectric / instrumentation tests | Robolectric needs `androidx.test:monitor` (Google Maven only); no emulator. |
 | Release pipeline: AAB, R8 shrinking, Play App Signing | Needs AGP or bundletool (Google Maven). See §5. |
@@ -67,7 +67,8 @@ Everything that needs a running Android system:
 
 ## 2. Known limitations & Android compatibility notes
 - **Sideloading on Android 13+:** the accessibility service ("text insertion") is a *restricted setting* for apps installed from files. The user must first try to turn it on (Android shows "Restricted setting"), then App info → ⋮ → Allow restricted settings, then turn it on. Setup shows these steps in order with buttons for each screen.
-- **Hold-to-talk timing:** a press shorter than 0.28 s is a tap; a hold released within 0.45 s is discarded with a hint (too short to contain speech).
+- **Hold-to-talk timing:** a press shorter than 0.28 s is a tap; a hold released within 0.45 s of starting is treated as a slow tap (recording continues; tap again to finish).
+- **Offline model memory:** the bubble keeps the model loaded while it is shown (Parakeet ≈ 0.6 GB, Moonshine ≈ 0.3 GB) so dictation starts instantly; in-app tests load it on demand and free it a minute later. If loading fails (e.g. not enough memory), FlowForge says so immediately and later dictations use Android's recognizer until the model is re-downloaded or switched.
 - **Offline model latency:** text appears after the model has transcribed the last stretch of speech; earlier sentences are transcribed while you talk. The first dictation after showing the bubble may wait for the model to load (measured 2–5 s on desktop; phone unmeasured).
 - **Overlay vs keyboard:** Android draws `TYPE_APPLICATION_OVERLAY` windows below the on-screen keyboard; a bubble placed low on the screen can be hidden by the keyboard. Drag it higher.
 - **Bubble start:** a microphone foreground service may only start while FlowForge is visible, so the bubble starts from the app or the Quick Settings tile (which briefly opens an invisible activity), never by itself in the background. If Android or Samsung's battery management kills the process, the bubble does not reappear on its own; Home offers "Restore bubble".

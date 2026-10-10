@@ -150,6 +150,30 @@ class ModelInstallerTest {
     }
 
     @Test
+    fun `an archive larger than the catalog size is rejected before the checksum`() {
+        val m = model("tiny-gnu.tar.bz2").copy(installedBytes = 1000)
+        try {
+            installer("tiny-gnu.tar.bz2").install(m)
+            fail("expected size limit")
+        } catch (e: ModelInstallException) {
+            assertTrue(e.message!!.contains("larger than expected"))
+        }
+        assertEquals(0, root.list()!!.size)
+    }
+
+    @Test
+    fun `leftovers of interrupted downloads are removed`() {
+        val m = model("tiny-gnu.tar.bz2")
+        val ins = installer("tiny-gnu.tar.bz2")
+        ins.install(m)
+        File(root, "other.partial").mkdirs()
+        File(root, "other.partial/encoder.int8.onnx").writeText("x")
+        ins.deleteLeftovers()
+        assertEquals(setOf("tiny"), root.list()!!.toSet())
+        assertTrue(ins.isInstalled(m))
+    }
+
+    @Test
     fun `deleting removes the model`() {
         val m = model("tiny-gnu.tar.bz2")
         val ins = installer("tiny-gnu.tar.bz2")

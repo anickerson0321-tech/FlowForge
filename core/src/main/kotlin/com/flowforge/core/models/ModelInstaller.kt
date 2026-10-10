@@ -41,6 +41,14 @@ class ModelInstaller(
         return model.files.all { f -> val file = File(dir, f); file.isFile && sizes[f] == file.length() && file.length() > 0 }
     }
 
+    /**
+     * Removes leftovers of downloads that were interrupted (e.g. the app was killed). Call only
+     * when no install is running.
+     */
+    fun deleteLeftovers() {
+        modelsRoot.listFiles { f -> f.isDirectory && f.name.endsWith(TMP_SUFFIX) }?.forEach { it.deleteRecursively() }
+    }
+
     fun delete(model: SpeechModel) {
         modelDir(model).deleteRecursively()
         File(modelsRoot, model.id + TMP_SUFFIX).deleteRecursively()
@@ -65,12 +73,17 @@ class ModelInstaller(
                 val tar = TarReader(BZip2InputStream(BufferedInputStream(raw, 1 shl 16), false))
                 val wanted = model.files.toSet()
                 val written = HashSet<String>()
+                // The checksum is only known at the end, so cap what a bad archive can write first.
+                val limit = if (model.installedBytes > 0) model.installedBytes + model.installedBytes / 10 + 4096 else Long.MAX_VALUE
+                var total = 0L
                 while (true) {
                     val entry = tar.next() ?: break
                     if (!entry.isFile) continue
                     val name = entry.baseName
                     // Only allow-listed base names are written: no path from the archive is ever used.
                     if (name !in wanted || name in written) continue
+                    if (entry.size > limit - total) throw ModelInstallException("The download is larger than expected, so it was discarded.")
+                    total += entry.size
                     FileOutputStream(File(tmp, name)).use { out -> tar.copyTo(out) }
                     written += name
                 }

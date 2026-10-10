@@ -84,16 +84,6 @@ data class UndoRecord(val plan: InsertionPlan, val targetKey: String, val create
         val sel = it.normalizedSelection
         FieldState(it.text, sel.first, sel.last + 1)
     }
-
-    /**
-     * For editors where only cursor-relative edits are possible (InputConnection): the number of
-     * characters to delete before the cursor and the text to put back.
-     */
-    fun cursorRelativeUndo(textBeforeCursor: CharSequence): Pair<Int, String>? {
-        val inserted = plan.insertedText
-        if (!textBeforeCursor.endsWith(inserted)) return null
-        return inserted.length to plan.replacedText
-    }
 }
 
 /** Small bounded stack of undo records (most recent first). */

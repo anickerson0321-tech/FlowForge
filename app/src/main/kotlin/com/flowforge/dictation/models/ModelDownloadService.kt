@@ -16,7 +16,6 @@ import android.util.Log
 import com.flowforge.core.models.ModelCatalog
 import com.flowforge.core.models.ModelInstallCancelled
 import com.flowforge.core.models.SpeechModel
-import com.flowforge.core.recognition.EngineKind
 import com.flowforge.dictation.R
 import com.flowforge.dictation.graph
 import com.flowforge.dictation.speech.LocalAsr
@@ -130,8 +129,8 @@ class ModelDownloadService : Service() {
         val error = result.exceptionOrNull()
         when {
             error == null -> {
-                // A model the user just downloaded is the one they want to use.
-                graph.settings.updateDictation { it.copy(localModelId = model.id, engine = EngineKind.LOCAL_MODEL) }
+                // The model just downloaded becomes the offline model; the engine choice is left alone.
+                graph.settings.updateDictation { it.copy(localModelId = model.id) }
                 LocalAsr.unloadNow()
                 ModelDownloads.set(ModelDownloads.State.Done(model.id))
                 Notifications.alert(this, "Offline speech model ready", "${model.label} is installed. Dictation now works without internet.")
@@ -149,8 +148,11 @@ class ModelDownloadService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        // Android 15+ limits dataSync work; stop cleanly (the partial download is discarded).
+        // Android 15+ limits dataSync time and requires the service to stop within seconds. The
+        // worker notices the cancel flag and discards the partial download on its own.
         cancelled = true
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {

@@ -101,7 +101,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         wm = windowContext.getSystemService(WindowManager::class.java)
         windowContext.registerComponentCallbacks(configCallbacks)
         panel = OverlayPanel(windowContext, wm)
-        controller = DictationController(this, this)
+        controller = DictationController(this, this, keepModelLoaded = true)
         isRunning = true
     }
 
@@ -355,8 +355,9 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
                 showMessage("Cancelled. Nothing was typed.")
             }
             wasHold && heldMs < MIN_HOLD_MS -> {
-                controller.cancel()
-                showMessage("Keep holding the bubble while you talk, or tap it once to start and again to finish.")
+                // Too short to be hold-to-talk: treat it as a (slow) tap and keep recording.
+                lastPanelKey = null
+                render(controller.state)
             }
             else -> controller.stop()
         }
@@ -624,7 +625,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
 
     companion object {
         private const val TAG = "FlowForgeBubble"
-        /** A hold shorter than this was probably meant as a tap; it's discarded, with a hint. */
+        /** A hold released sooner than this was probably meant as a tap: recording continues in tap mode. */
         private const val MIN_HOLD_MS = 450L
         const val ACTION_SHOW = "com.flowforge.dictation.action.SHOW_BUBBLE"
         const val ACTION_HIDE = "com.flowforge.dictation.action.HIDE_BUBBLE"

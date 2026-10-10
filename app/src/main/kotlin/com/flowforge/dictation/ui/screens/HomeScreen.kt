@@ -45,7 +45,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             col.addView(
                 ui.banner(
                     if (running != null) "Downloading the offline speech model… ${running.percent}%"
-                    else "For the most accurate dictation, download the offline speech model (one time). Until then Android's recognizer is used.",
+                    else "For the most accurate dictation, download the offline speech model (one time). Until then Android's recognizer is used (if fallback is on).",
                     Ui.Tone.INFO, if (running != null) "View" else "Download",
                 ) { host.navigate(MainActivity.Dest.ENGINE) },
             )

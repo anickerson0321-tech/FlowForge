@@ -18,11 +18,11 @@ Reproduce everything with:
 | core · TextCleanerTest | 42 | ✅ pass | Cleanup modes, the spec's reference sentence, self-corrections, spoken punctuation, lists, dictionary in cleanup, protected content |
 | core · WordPreservationTest | 3 | ✅ pass | 40-sentence corpus of "trap words": Light/Professional keep every word, Verbatim returns input unchanged |
 | core · DictationStateMachineTest | 15 | ✅ pass | Dictation lifecycle, cancel, repeated sessions, stale callbacks, permission revoked, interruption, network error, silence, max duration, double-tap protection |
-| core · TextInsertionTest | 18 | ✅ pass | Cursor/selection insertion planning, smart spacing, undo records, insertion policy (password/sensitive/blocked/own app), app-switch confirmation |
+| core · TextInsertionTest | 17 | ✅ pass | Cursor/selection insertion planning, smart spacing, undo records, insertion policy (password/sensitive/blocked/own app), app-switch confirmation |
 | core · InsertersTest | 13 | ✅ pass | Insertion + undo against a simulated EditText behind accessibility |
 | core · EngineSelectionTest | 9 | ✅ pass | Engine choice incl. offline model default and its fallbacks, network loss, consent/config requirements, never-fallback-to-cloud, Android error-code mapping |
 | core · SpeechChunkerTest | 7 | ✅ pass | Splitting a live recording at pauses: short dictation stays whole, cut lands inside the pause, short pauses don't split, max-length cut, silence flagged, steady hum not treated as speech |
-| core · ModelInstallerTest | 11 + 1 opt-in | ✅ pass | Model download/verify/install from GNU and PAX `tar.bz2` fixtures (incl. a 153-character path), wrong checksum installs nothing, failed update keeps the old model, truncated download, missing files, cancel, delete, tampered file detected, HTTPS-only redirects, catalog consistency |
+| core · ModelInstallerTest | 13 + 1 opt-in | ✅ pass | Model download/verify/install from GNU and PAX `tar.bz2` fixtures (incl. a 153-character path), wrong checksum installs nothing, oversized archive stopped before the checksum, leftovers of interrupted downloads removed, failed update keeps the old model, truncated download, missing files, cancel, delete, tampered file detected, HTTPS-only redirects, catalog consistency |
 | core · PrivacyTest | 5 | ✅ pass | Consent bound to host/purpose/notice version, HTTPS enforcement, retention |
 | core · PersonalDictionaryTest | 7 | ✅ pass | Whole-word matching, longest match, possessives, punctuation boundaries, common-word warning |
 | core · CloudClientTest | 13 | ✅ pass | OpenAI-compatible protocol vs a local HTTP server, error mapping, key redaction, AI-cleanup validation, WAV/RMS helpers |
@@ -30,7 +30,7 @@ Reproduce everything with:
 | app · FieldInspectorTest | 7 | ✅ pass | Password/sensitive/hint/unreliable-text detection using the **real Android 16 `AccessibilityNodeInfo`** class |
 | app · SpeechConstantsTest | 2 | ✅ pass | Core's copy of `SpeechRecognizer` error codes equals the Android 16 framework values; language-pack status wording |
 | app · LocalTranscriberIntegrationTest | 2 opt-in | ✅ pass when run (see §1a) | FlowForge's offline path on real audio with real models |
-| **Total** | **162** | **✅ 159 passed, 0 failed, 3 skipped by default** (the 3 opt-in tests need ~0.5–1 GB models; they passed when run, §1a) | |
+| **Total** | **163** | **✅ 160 passed, 0 failed, 3 skipped by default** (the 3 opt-in tests need ~0.5–1 GB models; they passed when run, §1a) | |
 | Public-API check (`tools/api_check.py`) | 588 refs | ✅ PASS | Every `android.*` reference in app+core bytecode resolved against AOSP Android 16 public API; 0 non-public; API>33 calls guarded. The bundled sherpa-onnx classes were checked separately: 1 reference, public. |
 | APK build + `apksigner verify` | — | ✅ pass | v2+v3 signatures; package metadata below |
 
@@ -43,8 +43,8 @@ show that the models and FlowForge's chunking work; they do **not** measure phon
 
 | Check | Result |
 |---|---|
-| Real Parakeet archive (482 MB) through `ModelInstaller` | ✅ SHA-256 matches the pin, all 4 files installed with the catalog sizes (51 s on this machine) |
-| Real Moonshine archive (251 MB) through `ModelInstaller` | ✅ same (23 s) |
+| Real Parakeet archive (482 MB) through `ModelInstaller` | ✅ SHA-256 matches the pin, all 4 files installed with the catalog sizes (46–51 s on this machine) |
+| Real Moonshine archive (251 MB) through `ModelInstaller` | ✅ same (21–23 s) |
 | Parakeet TDT 0.6B v2 int8, synthetic test sentences (espeak voice) | "Hey Jason Um I checked the bathrooms, and actually we should do it Friday not Thursday." / "Let's meet Thursday. Actually, make that Friday." / "Please send the three invoices to the Boston office by 5.30 tomorrow." / "No, don't send that. I mean, wait until Monday." — every word correct. Load 5.4 s; decode 0.07–0.09× real time on 4 threads |
 | Parakeet, LibriSpeech sample (16.7 s, human speech) | Correct apart from spelling variants ("for ever", "blest"); 0.07× real time |
 | Moonshine Base int8 | LibriSpeech samples correct; on the synthetic voice it misheard "three invoices to the Boston office" as "Freedom Voices to the Master Office". 0.05× real time; load 1.9 s |
@@ -59,7 +59,16 @@ APK-level checks for the engine: `classes.dex` contains all 122 `com.k2fsa.sherp
 `lib/arm64-v8a/libsherpa-onnx-jni.so` exports the `Java_com_k2fsa_sherpa_onnx_OfflineRecognizer_*`
 entry points those classes call; both native libraries use 16 KB-aligned ELF segments.
 
-Code review: an independent review pass over the Android services/lifecycle code (no device
+Code review (0.2.0): an independent review of the offline engine, download service and bubble
+gestures found no crash in the dictation path and 10 issues, all fixed: the download service didn't
+stop promptly on Android 15+'s dataSync timeout (would crash); the in-app test box kept the model
+loaded while Home was open; interrupted downloads left a large temporary folder; a model that
+failed to load was retried by every queued chunk and reported late (now reported at once, and the
+next dictation falls back to another engine); taps of 0.3–0.7 s were discarded (now continue as
+tap-to-talk); "Release to cancel" hint was overwritten; a finished download changed the user's
+engine choice; no size cap before the checksum; wording; dead keyboard-undo code.
+
+Code review (0.1.0): an independent review pass over the Android services/lifecycle code (no device
 available) found 7 issues plus 4 minor ones (overlay window leak race, Preview-mode Insert, test
 recording continuing in background, taps lost during live transcript updates, undo on rich fields,
 a race-only foreground-service crash, no cancel during processing, …). All were fixed in commit
@@ -142,7 +151,7 @@ Spec test areas mapped to evidence:
 4. Home → Try it here: hold the mic and talk, release; tap–talk–tap; note time from release to text
    (Help → Diagnostics shows load and stop→result times). Repeat in airplane mode.
 5. Bubble in Messages, Gmail, Chrome (normal + incognito), Samsung Notes: hold-to-talk, tap-to-talk,
-   slide-away cancel, very short press (expect a hint), drag/snap, drag to ✕, insertion at cursor,
+   slide-away cancel, a 0.3–0.7 s press (should keep recording as tap-to-talk), drag/snap, drag to ✕, insertion at cursor,
    selection replacement, Undo, "Preview first" setting, password field lockout.
 6. A 2–3 minute tap-to-talk dictation with natural pauses: check nothing is dropped and the text
    appears in the bubble panel while still talking.

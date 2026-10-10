@@ -129,7 +129,7 @@ class DictationSettingsScreen(host: MainActivity) : Screen(host) {
         fun update(change: (DictationSettings) -> DictationSettings) = s.updateDictation(change)
         return ui.column(spacingDp = 6).apply {
             addView(ui.heading("Recording"))
-            addView(ui.switchRow("Keep listening through pauses", "For Android's recognizer: keep going through pauses until you finish (stops after 20 seconds of silence). The offline model always records until you let go or tap again.", d.continuous) { v -> update { it.copy(continuous = v) } })
+            addView(ui.switchRow("Keep listening through pauses", "For Android's recognizer: keep going through pauses until you finish (stops after 20 seconds of silence). The offline model always records until you let go or tap again, up to the maximum length below.", d.continuous) { v -> update { it.copy(continuous = v) } })
             addView(ui.body("Maximum recording length"))
             addView(ui.radioGroup(DictationSettings.MAX_RECORDING_CHOICES, d.maxRecordingSeconds, { secs -> "${secs / 60} minute" + (if (secs >= 120) "s" else "") to null }) { v -> update { it.copy(maxRecordingSeconds = v) } })
             addView(ui.switchRow("Haptic feedback", "A short vibration when recording starts and stops.", d.haptics) { v -> update { it.copy(haptics = v) } })
@@ -212,9 +212,10 @@ class EngineScreen(host: MainActivity) : Screen(host) {
             val avail = when (k) {
                 EngineKind.LOCAL_MODEL -> when (local) {
                     LocalModelStatus.READY -> "Ready: ${LocalAsr.selectedModel(s).label}."
-                    LocalModelStatus.NOT_DOWNLOADED -> "Download a model above first. Until then, Android's recognizer is used."
+                    LocalModelStatus.NOT_DOWNLOADED -> "Download a model above first. Until then, Android's recognizer is used (with fallback on)."
                     LocalModelStatus.LANGUAGE_UNSUPPORTED -> "The models are English-only; your dictation language isn't English."
                     LocalModelStatus.DEVICE_UNSUPPORTED -> "Needs a 64-bit ARM phone."
+                    LocalModelStatus.LOAD_FAILED -> "The model couldn't be loaded (${LocalAsr.lastError ?: "unknown error"}). Delete and re-download it, or try the smaller model."
                 }
                 EngineKind.ON_DEVICE -> if (onDevice) "Available on this phone." else "Not available on this phone."
                 EngineKind.SYSTEM -> if (system) "Available." else "No speech service installed."

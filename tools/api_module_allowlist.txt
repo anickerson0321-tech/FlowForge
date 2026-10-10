@@ -7,3 +7,4 @@ class android.net.ConnectivityManager                                           
 Method android.net.ConnectivityManager.getActiveNetwork()Landroid/net/Network;              # API 23
 Method android.net.ConnectivityManager.getNetworkCapabilities(Landroid/net/Network;)Landroid/net/NetworkCapabilities;  # API 21
 Method android.net.NetworkCapabilities.hasCapability(I)Z                                   # API 21
+Method android.net.ConnectivityManager.isActiveNetworkMetered()Z                         # API 16

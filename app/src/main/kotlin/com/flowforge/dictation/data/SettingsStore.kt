@@ -28,6 +28,7 @@ class SettingsStore(context: Context, private val box: SecureBox) {
                 formatLists = prefs.getBoolean(K_LISTS, d.formatLists),
                 smartSpacing = prefs.getBoolean(K_SPACING, d.smartSpacing),
                 engine = enumOr(prefs.getString(K_ENGINE, null), d.engine),
+                localModelId = prefs.getString(K_LOCAL_MODEL, d.localModelId) ?: d.localModelId,
                 allowEngineFallback = prefs.getBoolean(K_FALLBACK, d.allowEngineFallback),
                 languageTag = prefs.getString(K_LANGUAGE, d.languageTag) ?: "",
                 continuous = prefs.getBoolean(K_CONTINUOUS, d.continuous),
@@ -45,6 +46,7 @@ class SettingsStore(context: Context, private val box: SecureBox) {
                 .putBoolean(K_LISTS, v.formatLists)
                 .putBoolean(K_SPACING, v.smartSpacing)
                 .putString(K_ENGINE, v.engine.name)
+                .putString(K_LOCAL_MODEL, v.localModelId)
                 .putBoolean(K_FALLBACK, v.allowEngineFallback)
                 .putString(K_LANGUAGE, v.languageTag)
                 .putBoolean(K_CONTINUOUS, v.continuous)
@@ -177,7 +179,9 @@ class SettingsStore(context: Context, private val box: SecureBox) {
         const val K_END_PUNCT = "auto_end_punctuation"
         const val K_LISTS = "format_lists"
         const val K_SPACING = "smart_spacing"
-        const val K_ENGINE = "engine"
+        // v2: version 0.2 makes the offline model the default; earlier saved choices start fresh.
+        const val K_ENGINE = "engine_v2"
+        const val K_LOCAL_MODEL = "local_model"
         const val K_FALLBACK = "engine_fallback"
         const val K_LANGUAGE = "language"
         const val K_CONTINUOUS = "continuous"

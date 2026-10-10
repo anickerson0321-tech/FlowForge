@@ -17,7 +17,7 @@ import java.util.Arrays
 
 /**
  * Records 16 kHz mono 16-bit PCM into memory only (never to disk). Used by engines that need
- * raw audio (cloud upload). Callbacks arrive on the main thread.
+ * raw audio (offline model, cloud upload). Callbacks arrive on the main thread, except [onAudio].
  */
 class PcmRecorder(
     private val context: Context,
@@ -26,6 +26,11 @@ class PcmRecorder(
     private val onSilenced: () -> Unit,
     /** The microphone stopped delivering audio (e.g. the audio server died). */
     private val onReadError: () -> Unit = {},
+    /**
+     * Receives each 100 ms block on the recording thread as it arrives. The array is reused, so
+     * copy what you keep. When set, audio is streamed instead of buffered and [stop] returns nothing.
+     */
+    private val onAudio: ((ByteArray, Int) -> Unit)? = null,
 ) {
     private val main = Handler(Looper.getMainLooper())
     private var record: AudioRecord? = null
@@ -90,8 +95,12 @@ class PcmRecorder(
                 break
             }
             if (n == 0) continue
-            synchronized(buffer) {
-                if (buffer.size() + n <= maxBytes) buffer.write(chunk, 0, n)
+            if (onAudio != null) {
+                onAudio.invoke(chunk, n)
+            } else {
+                synchronized(buffer) {
+                    if (buffer.size() + n <= maxBytes) buffer.write(chunk, 0, n)
+                }
             }
             val now = System.nanoTime()
             if (now - lastLevel > 60_000_000L) {

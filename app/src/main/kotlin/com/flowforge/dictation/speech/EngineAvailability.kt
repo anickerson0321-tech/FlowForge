@@ -37,6 +37,7 @@ object EngineAvailability {
             cloudConfigured = settings.hasCloudApiKey && ConsentPolicy.hostOf(url) != null,
             cloudConsentValid = ConsentPolicy.isValid(settings.privacy.recognitionConsent, CloudPurpose.RECOGNITION, url),
             networkAvailable = networkAvailable(context),
+            localModel = LocalAsr.status(context, settings),
         )
     }
 

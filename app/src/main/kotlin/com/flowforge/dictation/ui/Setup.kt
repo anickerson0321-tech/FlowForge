@@ -9,9 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
-import android.view.inputmethod.InputMethodManager
 import com.flowforge.dictation.accessibility.FlowForgeAccessibilityService
-import com.flowforge.dictation.ime.FlowForgeKeyboardService
 
 /** Read-only checks of what the user has enabled, plus intents to the right system screens. */
 object Setup {
@@ -28,20 +26,8 @@ object Setup {
         }
     }
 
-    fun keyboardEnabled(c: Context): Boolean {
-        val imm = c.getSystemService(InputMethodManager::class.java) ?: return false
-        val ours = ComponentName(c, FlowForgeKeyboardService::class.java)
-        return imm.enabledInputMethodList.any { it.component == ours }
-    }
-
-    fun keyboardSelected(c: Context): Boolean {
-        val current = Settings.Secure.getString(c.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) ?: return false
-        return ComponentName.unflattenFromString(current) == ComponentName(c, FlowForgeKeyboardService::class.java)
-    }
-
     fun overlaySettings(c: Context) = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${c.packageName}"))
     fun accessibilitySettings() = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-    fun keyboardSettings() = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
     fun appDetails(c: Context) = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${c.packageName}"))
     fun notificationSettings(c: Context) = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, c.packageName)
     fun voiceInputSettings() = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)

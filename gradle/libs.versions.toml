@@ -3,6 +3,10 @@ kotlin = "2.2.21"
 junit = "4.13.2"
 # org.json ships inside Android; this artifact is only for compiling core and running JVM tests.
 orgJson = "20250517"
+# Pure-Java bzip2 decoder (MIT), Java 7 bytecode without invokedynamic, so dx can dex it.
+jbzip2 = "0.9.1"
+# sherpa-onnx offline speech recognition runtime (Apache-2.0): Kotlin API + onnxruntime native libs.
+sherpaOnnx = "1.13.8"
 # Android framework jars published by the Robolectric project (built from AOSP release tags).
 # compile: Android 16 / API 36 (BLR2.250402.052). link: Android 14 / API 34 (UP1A.231105.001),
 # used only for aapt2 resource linking because Ubuntu's aapt2 cannot parse newer resource tables.
@@ -12,6 +16,8 @@ androidLink = "14-robolectric-10818077"
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
+jbzip2 = { module = "org.itadaki:bzip2", version.ref = "jbzip2" }
+sherpa-onnx = { module = "com.k2fsa:sherpa-onnx", version.ref = "sherpaOnnx" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 android-compile = { module = "org.robolectric:android-all", version.ref = "androidCompile" }
 android-link = { module = "org.robolectric:android-all", version.ref = "androidLink" }

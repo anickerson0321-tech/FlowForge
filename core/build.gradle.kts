@@ -26,6 +26,8 @@ kotlin {
 dependencies {
     // Provided by the Android framework at runtime (android.jar includes org.json).
     compileOnly(libs.org.json)
+    // Decompresses downloaded speech-model archives (.tar.bz2).
+    implementation(libs.jbzip2)
     testImplementation(libs.org.json)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)

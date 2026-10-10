@@ -70,7 +70,7 @@ sealed class SessionEffect {
 data class Transition(val state: SessionState, val effects: List<SessionEffect> = emptyList())
 
 /**
- * Pure state machine for one dictation surface (bubble or keyboard). The Android layer feeds it
+ * Pure state machine for one dictation surface (bubble or in-app test box). The Android layer feeds it
  * events and executes the returned effects; all lifecycle rules live here so they are unit tested:
  *
  *  - a start within [minRestartIntervalMs] of the previous session ending is ignored

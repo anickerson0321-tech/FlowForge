@@ -19,7 +19,9 @@ data class DictationSettings(
     val autoEndPunctuation: Boolean = true,
     val formatLists: Boolean = true,
     val smartSpacing: Boolean = true,
-    val engine: EngineKind = EngineKind.ON_DEVICE,
+    val engine: EngineKind = EngineKind.LOCAL_MODEL,
+    /** Which [com.flowforge.core.models.ModelCatalog] model the offline engine uses. */
+    val localModelId: String = com.flowforge.core.models.ModelCatalog.default.id,
     val allowEngineFallback: Boolean = true,
     /** BCP-47 tag such as "en-US"; empty means the device language. */
     val languageTag: String = "",

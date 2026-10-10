@@ -25,8 +25,8 @@ plugins {
 val appId = "com.flowforge.dictation"
 val minSdk = 33
 val targetSdk = 36
-val appVersionCode = 1
-val appVersionName = "0.1.0"
+val appVersionCode = 2
+val appVersionName = "0.2.0"
 
 // ---------------------------------------------------------------------------------------------
 // Toolchain detection
@@ -66,6 +66,9 @@ logger.info("FlowForge toolchain: $toolchainName")
 // Framework jars for the bootstrap toolchain (ignored when the official SDK is present).
 val androidCompileJar: Configuration by configurations.creating { isTransitive = false }
 val androidLinkJar: Configuration by configurations.creating { isTransitive = false }
+// The sherpa-onnx AAR. Without AGP, its classes.jar and the arm64 native libraries are unpacked by
+// extractSherpaOnnx below and fed to the compiler, the dexer and the packager by hand.
+val sherpaAar: Configuration by configurations.creating { isTransitive = false }
 
 dependencies {
     if (!useOfficialSdk) {
@@ -73,11 +76,34 @@ dependencies {
         androidLinkJar(libs.android.link)
     }
     implementation(project(":core"))
+    sherpaAar(libs.sherpa.onnx) { artifact { type = "aar" } }
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
     // JVM unit tests use the pure-Java parts of the real Android 16 framework (AccessibilityNodeInfo,
     // InputType, ...). The SDK's android.jar can't be used: its methods are stubs that throw.
     testImplementation(libs.android.compile)
+}
+
+// Only the 64-bit ARM libraries are packaged: every phone FlowForge targets (Android 13+, e.g. the
+// Galaxy Z Fold7) is arm64. Only the JNI bridge and onnxruntime are needed; the C/C++ API libraries are not.
+val nativeAbi = "arm64-v8a"
+val nativeLibs = listOf("libonnxruntime.so", "libsherpa-onnx-jni.so")
+val sherpaDir = layout.buildDirectory.dir("flowforge/sherpa-onnx")
+
+val extractSherpaOnnx by tasks.registering(Sync::class) {
+    description = "Unpacks classes.jar and the $nativeAbi native libraries from the sherpa-onnx AAR."
+    from({ zipTree(sherpaAar.singleFile) }) {
+        include("classes.jar")
+        nativeLibs.forEach { include("jni/$nativeAbi/$it") }
+    }
+    into(sherpaDir)
+}
+val sherpaClasses: FileCollection = files(sherpaDir.map { it.file("classes.jar") }).builtBy(extractSherpaOnnx)
+
+dependencies {
+    compileOnly(sherpaClasses)
+    // Opt-in JVM integration tests run the same Kotlin API against sherpa-onnx's Linux JNI build.
+    testImplementation(sherpaClasses)
 }
 
 val androidCompileClasspath: FileCollection =
@@ -108,6 +134,10 @@ kotlin {
 
 tasks.test {
     useJUnit()
+    // Opt-in offline model integration test (see LocalTranscriberIntegrationTest): point
+    // FLOWFORGE_SHERPA_LIB at sherpa-onnx's Linux JNI libraries and FLOWFORGE_MODEL_DIR at a model.
+    System.getenv("FLOWFORGE_SHERPA_LIB")?.let { systemProperty("java.library.path", it) }
+    maxHeapSize = "3g"
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }
 
@@ -223,11 +253,11 @@ val mergeDexInputs by tasks.registering(Jar::class) {
     archiveFileName.set("dex-input.jar")
     duplicatesStrategy = DuplicatesStrategy.FAIL
     from(sourceSets.main.get().output.classesDirs)
-    from({ configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }.map { zipTree(it) } }) {
+    from({ (configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") } + sherpaClasses).map { zipTree(it) } }) {
         exclude("META-INF/**", "**/module-info.class")
         include("**/*.class")
     }
-    dependsOn(tasks.named("classes"), configurations.runtimeClasspath)
+    dependsOn(tasks.named("classes"), configurations.runtimeClasspath, extractSherpaOnnx)
 }
 
 val dexClasses by tasks.registering(Exec::class) {
@@ -267,7 +297,9 @@ fun storedEntry(name: String, bytes: ByteArray) = ZipEntry(name).apply {
 
 fun registerPackage(variant: String, link: TaskProvider<Exec>) = tasks.register("package${variant}Apk") {
     description = "Assembles the unsigned, unaligned $variant APK."
-    dependsOn(link, dexClasses)
+    dependsOn(link, dexClasses, extractSherpaOnnx)
+    val libDir = sherpaDir.map { it.dir("jni/$nativeAbi") }
+    inputs.dir(libDir)
     val resApk = ffBuild.map { it.file("res/resources-$variant.ap_") }
     val dexDir = ffBuild.map { it.dir("dex/out") }
     val runtimeJars = configurations.runtimeClasspath
@@ -309,6 +341,14 @@ fun registerPackage(variant: String, link: TaskProvider<Exec>) = tasks.register(
                 val bytes = dex.readBytes()
                 zos.putNextEntry(storedEntry(dex.name, bytes))
                 zos.write(bytes)
+                zos.closeEntry()
+            }
+            // Native libraries are compressed and extracted at install (android:extractNativeLibs="true"),
+            // which keeps the APK small and doesn't need 16 KB zip alignment. The ELF segments of
+            // both libraries are already 16 KB aligned, as Android 15+ requires on 16 KB-page devices.
+            nativeLibs.forEach { lib ->
+                zos.putNextEntry(ZipEntry("lib/$nativeAbi/$lib"))
+                libDir.get().file(lib).asFile.inputStream().use { it.copyTo(zos) }
                 zos.closeEntry()
             }
             services.forEach { (name, content) ->

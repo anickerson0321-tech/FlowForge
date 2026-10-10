@@ -8,7 +8,6 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
@@ -24,16 +23,23 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * The floating microphone. Tap: start/stop. Drag: move (snaps to an edge). Long-press: menu.
- * A tap only counts if the finger stays within the touch slop and lifts within the long-press
- * timeout, which prevents recording from accidental brushes or drags.
+ * The floating microphone. Two ways to dictate, so it works however the user prefers:
+ *  - Hold to talk: press and hold, speak, release to insert. Slide far away before releasing to cancel.
+ *  - Tap to talk: tap once to start, speak, tap again to finish.
+ * Moving the finger before the hold starts drags the bubble instead (it snaps to an edge), so a
+ * drag never records. Long-pressing no longer opens a menu; the notification and app have the options.
  */
 @SuppressLint("ViewConstructor")
 class BubbleView(context: Context, private val callbacks: Callbacks) : View(context) {
 
     interface Callbacks {
         fun onBubbleTap()
-        fun onBubbleLongPress()
+        /** The finger has stayed down long enough: start hold-to-talk. */
+        fun onHoldStart()
+        /** The finger lifted after [onHoldStart]; [cancel] when it was released in the cancel zone. */
+        fun onHoldEnd(cancel: Boolean)
+        /** The held finger moved into (or back out of) the cancel zone. */
+        fun onHoldCancelZone(inZone: Boolean)
         fun onDragStart()
         fun onDragBy(dx: Int, dy: Int, rawX: Float, rawY: Float)
         fun onDragEnd(rawX: Float, rawY: Float)
@@ -86,19 +92,22 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
     }
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-    private val longPressMs = ViewConfiguration.getLongPressTimeout().toLong()
+    private val cancelDistancePx = context.dpf(CANCEL_DISTANCE_DP.toFloat())
     private var downRawX = 0f
     private var downRawY = 0f
     private var lastRawX = 0f
     private var lastRawY = 0f
-    private var downTime = 0L
     private var dragging = false
-    private var longPressed = false
-    private val longPressRunnable = Runnable {
+    private var holding = false
+    private var inCancelZone = false
+    private val holdRunnable = Runnable {
         if (!dragging) {
-            longPressed = true
+            holding = true
+            inCancelZone = false
+            // Inside scrolling layouts (the in-app test box), keep the finger's moves for the hold.
+            parent?.requestDisallowInterceptTouchEvent(true)
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            callbacks.onBubbleLongPress()
+            callbacks.onHoldStart()
         }
     }
 
@@ -122,7 +131,11 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
 
     override fun onDetachedFromWindow() {
         spinner.cancel()
-        removeCallbacks(longPressRunnable)
+        removeCallbacks(holdRunnable)
+        if (holding) {
+            holding = false
+            callbacks.onHoldEnd(cancel = false)
+        }
         super.onDetachedFromWindow()
     }
 
@@ -195,18 +208,28 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
                 downRawY = event.rawY
                 lastRawX = event.rawX
                 lastRawY = event.rawY
-                downTime = event.eventTime
                 dragging = false
-                longPressed = false
+                holding = false
+                inCancelZone = false
                 isPressed = true
-                postDelayed(longPressRunnable, longPressMs)
+                postDelayed(holdRunnable, HOLD_MS)
             }
             MotionEvent.ACTION_MOVE -> {
                 val moved = hypot(event.rawX - downRawX, event.rawY - downRawY)
-                if (!dragging && !longPressed && moved > touchSlop) {
-                    dragging = true
-                    removeCallbacks(longPressRunnable)
-                    callbacks.onDragStart()
+                when {
+                    holding -> {
+                        val zone = moved > cancelDistancePx
+                        if (zone != inCancelZone) {
+                            inCancelZone = zone
+                            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            callbacks.onHoldCancelZone(zone)
+                        }
+                    }
+                    !dragging && moved > touchSlop -> {
+                        dragging = true
+                        removeCallbacks(holdRunnable)
+                        callbacks.onDragStart()
+                    }
                 }
                 if (dragging) {
                     callbacks.onDragBy((event.rawX - lastRawX).toInt(), (event.rawY - lastRawY).toInt(), event.rawX, event.rawY)
@@ -215,21 +238,24 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
                 }
             }
             MotionEvent.ACTION_UP -> {
-                removeCallbacks(longPressRunnable)
+                removeCallbacks(holdRunnable)
                 isPressed = false
                 when {
                     dragging -> callbacks.onDragEnd(event.rawX, event.rawY)
-                    longPressed -> Unit
-                    event.eventTime - downTime < longPressMs &&
-                        abs(event.rawX - downRawX) <= touchSlop && abs(event.rawY - downRawY) <= touchSlop -> performClick()
+                    holding -> callbacks.onHoldEnd(cancel = inCancelZone)
+                    abs(event.rawX - downRawX) <= touchSlop && abs(event.rawY - downRawY) <= touchSlop -> performClick()
                 }
                 dragging = false
+                holding = false
             }
             MotionEvent.ACTION_CANCEL -> {
-                removeCallbacks(longPressRunnable)
+                removeCallbacks(holdRunnable)
                 isPressed = false
                 if (dragging) callbacks.onDragEnd(event.rawX, event.rawY)
+                // The system took the touch away: keep what was said rather than losing it.
+                if (holding) callbacks.onHoldEnd(cancel = false)
                 dragging = false
+                holding = false
             }
         }
         return true
@@ -241,14 +267,9 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
         return true
     }
 
-    override fun performLongClick(): Boolean {
-        callbacks.onBubbleLongPress()
-        return true
-    }
-
     private fun updateDescription() {
         contentDescription = when (visual) {
-            Visual.IDLE -> "FlowForge dictation. Double-tap to start dictating."
+            Visual.IDLE -> "FlowForge dictation. Double-tap to start dictating, or double-tap and hold to talk."
             Visual.STARTING -> "FlowForge is starting the microphone."
             Visual.LISTENING -> "FlowForge is listening. Double-tap to finish."
             Visual.PROCESSING -> "FlowForge is processing your dictation."
@@ -266,19 +287,14 @@ class BubbleView(context: Context, private val callbacks: Callbacks) : View(cont
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         info.className = "android.widget.Button"
-        info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, "Open dictation menu"))
-    }
-
-    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
-        if (action == AccessibilityNodeInfo.ACTION_LONG_CLICK) {
-            callbacks.onBubbleLongPress()
-            return true
-        }
-        return super.performAccessibilityAction(action, arguments)
     }
 
     companion object {
         const val SIZE_DP = 56
         const val RING_DP = 12
+        /** A press longer than this is hold-to-talk; shorter is a tap. */
+        const val HOLD_MS = 280L
+        /** Sliding this far from where the hold started, then releasing, cancels. */
+        const val CANCEL_DISTANCE_DP = 96
     }
 }

@@ -4,8 +4,6 @@ import com.flowforge.core.settings.InsertionPreference
 
 /** How dictated text is delivered to the target field. */
 enum class InsertionMethod {
-    /** Keyboard mode: InputConnection.commitText (most reliable; cursor-aware). */
-    IME_COMMIT,
     /** Accessibility ACTION_SET_TEXT with the full new text, then ACTION_SET_SELECTION. */
     SET_TEXT,
     /** Clipboard + accessibility ACTION_PASTE. Preserves rich content around the cursor. */
@@ -23,7 +21,7 @@ enum class RefusalReason(val message: String) {
     OWN_APP("Use the preview to insert text inside FlowForge itself."),
 }
 
-/** Facts about the focused field, extracted by the Android layer (accessibility node or EditorInfo). */
+/** Facts about the focused field, extracted by the Android layer (the focused accessibility node). */
 data class TargetField(
     val packageName: String,
     val className: String = "",

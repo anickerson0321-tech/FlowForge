@@ -17,6 +17,19 @@ dependencyResolutionManagement {
     repositories {
         maven("https://maven-central.storage-download.googleapis.com/maven2/") { name = "MavenCentralMirror" }
         mavenCentral()
+        // The sherpa-onnx speech runtime (Apache-2.0) is published as an AAR on the project's GitHub
+        // releases, not on Maven. Only that one module may come from here, and its checksum is pinned
+        // in gradle/verification-metadata.xml.
+        exclusiveContent {
+            forRepository {
+                ivy("https://github.com/k2-fsa/sherpa-onnx/releases/download/") {
+                    name = "SherpaOnnxReleases"
+                    patternLayout { artifact("v[revision]/[module]-[revision].[ext]") }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule("com.k2fsa", "sherpa-onnx") }
+        }
     }
 }
 

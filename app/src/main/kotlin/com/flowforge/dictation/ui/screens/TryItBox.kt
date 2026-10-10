@@ -33,10 +33,12 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
     private lateinit var details: TextView
     private lateinit var mic: BubbleView
     private var lastOutput: DictationOutput? = null
+    private var holdMode = false
+    private var holdStartedAt = 0L
 
     fun build(): View {
         val p = ui.palette
-        field = ui.input("Tap the mic and speak. Text appears at the cursor.", multiLine = true).apply {
+        field = ui.input("Hold the mic and talk, or tap it to start and again to finish. Text appears at the cursor.", multiLine = true).apply {
             minLines = 3
             gravity = android.view.Gravity.TOP or android.view.Gravity.START
         }
@@ -77,12 +79,41 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
             host.requestMic()
             return
         }
+        if (controller.state.phase == Phase.PROCESSING) return
         if (controller.state.phase == Phase.ERROR) controller.dismiss()
+        holdMode = false
         controller.toggle()
     }
 
-    override fun onBubbleLongPress() {
-        if (controller.state.isActive) controller.cancel()
+    override fun onHoldStart() {
+        if (!com.flowforge.dictation.ui.Setup.hasMic(host)) {
+            host.requestMic()
+            return
+        }
+        val state = controller.state
+        if (state.isRecording || state.phase == Phase.PROCESSING) return
+        if (state.phase == Phase.ERROR) controller.dismiss()
+        holdMode = true
+        holdStartedAt = SystemClock.uptimeMillis()
+        controller.start()
+    }
+
+    override fun onHoldEnd(cancel: Boolean) {
+        val wasHold = holdMode
+        holdMode = false
+        if (!controller.state.isRecording) return
+        when {
+            cancel -> controller.cancel()
+            wasHold && SystemClock.uptimeMillis() - holdStartedAt < 450 -> {
+                controller.cancel()
+                host.toast("Keep holding the mic while you talk, or tap it once to start and again to finish.")
+            }
+            else -> controller.stop()
+        }
+    }
+
+    override fun onHoldCancelZone(inZone: Boolean) {
+        if (controller.state.isRecording) status.text = if (inZone) "Release to cancel." else "Listening: ${controller.state.displayText.ifBlank { "speak now" }}"
     }
 
     override fun onDragStart() = Unit
@@ -104,7 +135,7 @@ class TryItBox(private val host: MainActivity, private val ui: Ui) : DictationCo
         status.text = when (state.phase) {
             Phase.IDLE -> idleStatus()
             Phase.STARTING -> "Starting microphone…"
-            Phase.LISTENING -> "Listening: ${state.displayText.ifBlank { "speak now" }}"
+            Phase.LISTENING -> (if (holdMode) "Listening (release to finish): " else "Listening (tap to finish): ") + state.displayText.ifBlank { "speak now" }
             Phase.PROCESSING -> "Processing…"
             Phase.ERROR -> state.error?.let { "${it.message} ${it.suggestion}" + if (state.recoveredText.isNotBlank()) " Captured: “${state.recoveredText}”" else "" } ?: ""
         }

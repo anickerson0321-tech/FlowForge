@@ -32,6 +32,8 @@ import com.flowforge.dictation.speech.AndroidSpeechEngine
 import com.flowforge.dictation.speech.CloudSpeechEngine
 import com.flowforge.dictation.speech.EngineAvailability
 import com.flowforge.dictation.speech.EngineRequest
+import com.flowforge.dictation.speech.LocalAsr
+import com.flowforge.dictation.speech.LocalModelEngine
 import com.flowforge.dictation.speech.RecognitionEngine
 
 /** Final text ready for insertion, plus everything needed for undo/recovery and history. */
@@ -50,7 +52,7 @@ data class DictationOutput(
 data class DeliveryReport(val outcome: String, val targetApp: String)
 
 /**
- * Runs dictation for one surface (the floating bubble or the voice keyboard): engine selection,
+ * Runs dictation for one surface (the floating bubble or the in-app Try-it box): engine selection,
  * recording lifecycle (via the pure [DictationStateMachine]), cleanup and hand-off for insertion.
  * Main thread only.
  */
@@ -84,6 +86,16 @@ class DictationController(private val context: Context, private val surface: Sur
     init {
         // Warm the dictionary cache off the main thread so cleanup and vocabulary hints are ready.
         graph.io.execute { runCatching { graph.dictionary.current() } }
+        // Keep the offline model loaded while this surface is open, and start loading it now.
+        LocalAsr.hold(this)
+        val settings = graph.settings
+        if (settings.dictation.engine == EngineKind.LOCAL_MODEL) {
+            graph.background({ LocalAsr.status(context, settings) }) { r ->
+                if (!released && r.getOrNull() == com.flowforge.core.recognition.LocalModelStatus.READY) {
+                    LocalAsr.preload(context, LocalAsr.selectedModel(settings))
+                }
+            }
+        }
     }
 
     fun toggle() {
@@ -116,6 +128,7 @@ class DictationController(private val context: Context, private val surface: Sur
         if (state.isActive) dispatch(SessionEvent.Interrupted("dictation surface closed"))
         released = true
         releaseEngine()
+        LocalAsr.unhold(this)
         handler.removeCallbacksAndMessages(null)
     }
 
@@ -167,6 +180,7 @@ class DictationController(private val context: Context, private val surface: Sur
     }
 
     private fun createEngine(kind: EngineKind, maxSeconds: Int): RecognitionEngine? = when (kind) {
+        EngineKind.LOCAL_MODEL -> LocalModelEngine(context, LocalAsr.selectedModel(graph.settings), maxSeconds)
         EngineKind.ON_DEVICE -> AndroidSpeechEngine(context, onDevice = true)
         EngineKind.SYSTEM -> AndroidSpeechEngine(context, onDevice = false)
         EngineKind.CLOUD -> graph.settings.cloudConfig()?.let { CloudSpeechEngine(context, it, graph.io, maxSeconds) }

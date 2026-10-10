@@ -1,6 +1,5 @@
 package com.flowforge.core.insertion
 
-import com.flowforge.core.cleanup.InsertionContext
 import com.flowforge.core.settings.InsertionPreference
 
 // =================================================================================================
@@ -127,74 +126,4 @@ class AccessibilityInserter(private val undo: UndoHistory = UndoHistory(5), priv
         undo.pop()
         return UndoOutcome(true, "Dictation undone.")
     }
-}
-
-// =================================================================================================
-// Keyboard-style insertion (InputConnection)
-// =================================================================================================
-
-/** The subset of android.view.inputmethod.InputConnection that FlowForge uses. */
-interface CursorEditor {
-    fun textBeforeCursor(n: Int): CharSequence?
-    fun textAfterCursor(n: Int): CharSequence?
-    fun selectedText(): CharSequence?
-    /** commitText(text, 1): replaces the selection (or inserts at the cursor); cursor ends after it. */
-    fun commit(text: String): Boolean
-    /** deleteSurroundingText(n, 0). */
-    fun deleteBeforeCursor(n: Int): Boolean
-    fun beginBatch()
-    fun endBatch()
-}
-
-/** Keyboard insertion with smart spacing and cursor-relative undo. */
-class CursorInserter(private val undo: UndoHistory = UndoHistory(10), private val clock: () -> Long = { 0L }) {
-    val canUndo: Boolean get() = undo.peek() != null
-
-    fun context(editor: CursorEditor): InsertionContext = InsertionContext.of(
-        editor.textBeforeCursor(InsertionContext.MAX_CONTEXT_CHARS) ?: "",
-        editor.textAfterCursor(InsertionContext.MAX_CONTEXT_CHARS) ?: "",
-    )
-
-    /** Inserts at the cursor, replacing any selection; only a small window around the cursor is read. */
-    fun insert(editor: CursorEditor, text: String, fieldKey: String, smartSpacing: Boolean): Boolean {
-        val before = editor.textBeforeCursor(InsertionContext.MAX_CONTEXT_CHARS)?.toString() ?: ""
-        val selected = editor.selectedText()?.toString() ?: ""
-        val after = editor.textAfterCursor(InsertionContext.MAX_CONTEXT_CHARS)?.toString() ?: ""
-        val window = FieldState(before + selected + after, before.length, before.length + selected.length)
-        val plan = TextInsertionPlanner.plan(window, text, smartSpacing)
-        editor.beginBatch()
-        val ok = try {
-            editor.commit(plan.insertedText)
-        } finally {
-            editor.endBatch()
-        }
-        if (ok) undo.push(UndoRecord(plan, fieldKey, clock()))
-        return ok
-    }
-
-    /** Removes the last dictation if the text before the cursor still ends with it; restores a replaced selection. */
-    fun undoLast(editor: CursorEditor, fieldKey: String): UndoOutcome {
-        val record = undo.peek() ?: return UndoOutcome(false, "Nothing to undo.")
-        if (record.targetKey != fieldKey) {
-            undo.pop()
-            return UndoOutcome(false, "That dictation was in another field.")
-        }
-        val before = editor.textBeforeCursor(record.plan.insertedText.length) ?: ""
-        val step = record.cursorRelativeUndo(before)
-        if (step == null) {
-            undo.pop()
-            return UndoOutcome(false, "The text changed after dictation, so undo was skipped to protect your edits.")
-        }
-        editor.beginBatch()
-        try {
-            editor.deleteBeforeCursor(step.first)
-            if (step.second.isNotEmpty()) editor.commit(step.second)
-        } finally {
-            editor.endBatch()
-        }
-        undo.pop()
-        return UndoOutcome(true, "Dictation undone.")
-    }
-
-    fun clear() = undo.clear()
 }

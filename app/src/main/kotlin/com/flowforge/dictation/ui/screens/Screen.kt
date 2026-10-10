@@ -18,4 +18,5 @@ abstract class Screen(protected val host: MainActivity) {
     open fun onPause() {}
     open fun onDestroy() {}
     protected val graph: AppGraph get() = host.graph
+    internal val hostActivity: MainActivity get() = host
 }

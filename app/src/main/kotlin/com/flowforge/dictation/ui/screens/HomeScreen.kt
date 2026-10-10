@@ -1,9 +1,12 @@
 package com.flowforge.dictation.ui.screens
 
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import com.flowforge.core.cleanup.CleanupMode
+import com.flowforge.core.recognition.EngineKind
+import com.flowforge.core.recognition.LocalModelStatus
 import com.flowforge.core.recognition.exposure
+import com.flowforge.dictation.models.ModelDownloads
+import com.flowforge.dictation.speech.LocalAsr
 import com.flowforge.dictation.overlay.DictationService
 import com.flowforge.dictation.ui.MainActivity
 import com.flowforge.dictation.ui.Setup
@@ -25,13 +28,26 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         val mic = Setup.hasMic(host)
         val bubbleReady = mic && Setup.canOverlay(host)
         val insertion = Setup.accessibilityEnabled(host)
-        val keyboard = Setup.keyboardEnabled(host)
-        if (!mic || (!keyboard && !(bubbleReady && insertion))) {
+        if (!mic || !bubbleReady || !insertion) {
             col.addView(
                 ui.banner(
-                    if (!mic) "FlowForge needs microphone access before you can dictate." else "Finish setup to dictate into other apps: enable the voice keyboard, or the bubble with text insertion.",
+                    when {
+                        !mic -> "FlowForge needs microphone access before you can dictate."
+                        !bubbleReady -> "Finish setup: allow the bubble to show over other apps."
+                        else -> "Finish setup: turn on text insertion so the bubble can type for you (until then you can copy the results)."
+                    },
                     Ui.Tone.WARNING, "Finish setup",
                 ) { host.navigate(MainActivity.Dest.PERMISSIONS) },
+            )
+        }
+        if (d.engine == EngineKind.LOCAL_MODEL && LocalAsr.status(host, settings) == LocalModelStatus.NOT_DOWNLOADED) {
+            val running = ModelDownloads.state as? ModelDownloads.State.Running
+            col.addView(
+                ui.banner(
+                    if (running != null) "Downloading the offline speech model… ${running.percent}%"
+                    else "For the most accurate dictation, download the offline speech model (one time). Until then Android's recognizer is used.",
+                    Ui.Tone.INFO, if (running != null) "View" else "Download",
+                ) { host.navigate(MainActivity.Dest.ENGINE) },
             )
         }
         if (settings.bubbleWanted && !DictationService.isRunning && bubbleReady) {
@@ -52,7 +68,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
                         when {
                             !bubbleReady -> "A movable mic that works over any app. Needs microphone and display-over-apps permissions."
                             !insertion -> "Ready. Text insertion is off, so results are shown for you to copy."
-                            else -> "Tap the bubble to talk, tap again to insert. Drag to move; drag to ✕ to hide."
+                            else -> "Hold the bubble and talk, then let go to insert. Or tap once to start and again to finish. Drag to move; drag to ✕ to hide."
                         },
                     ))
                     val running = DictationService.isRunning
@@ -68,31 +84,6 @@ class HomeScreen(host: MainActivity) : Screen(host) {
                             host.window.decorView.postDelayed({ host.refresh() }, 300)
                         }
                     })
-                },
-            ),
-        )
-
-        // Voice keyboard
-        col.addView(
-            ui.card(
-                ui.column(spacingDp = 8).apply {
-                    addView(ui.text("Voice keyboard", 18f, bold = true))
-                    addView(ui.caption(
-                        if (keyboard) {
-                            "Most reliable way to dictate: switch to the FlowForge keyboard in any text field, tap the mic, then 🌐 to go back."
-                        } else {
-                            "Most reliable way to dictate. Enable “FlowForge Voice Keyboard” in Android's keyboard settings."
-                        },
-                    ))
-                    addView(
-                        if (keyboard) {
-                            ui.button("Switch keyboard now", Ui.ButtonStyle.TONAL) {
-                                host.getSystemService(InputMethodManager::class.java).showInputMethodPicker()
-                            }
-                        } else {
-                            ui.button("Enable keyboard", Ui.ButtonStyle.TONAL) { host.open(Setup.keyboardSettings()) }
-                        },
-                    )
                 },
             ),
         )

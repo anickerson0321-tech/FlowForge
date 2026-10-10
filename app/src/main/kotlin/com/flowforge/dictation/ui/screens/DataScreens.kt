@@ -122,6 +122,7 @@ class PrivacyScreen(host: MainActivity) : Screen(host) {
 
         col.addView(ui.heading("Where your data goes"))
         val engineLine = when (d.engine) {
+            EngineKind.LOCAL_MODEL -> "Speech: transcribed on this phone by FlowForge's offline model. Audio never leaves the phone; the internet is only used once, to download the model when you ask."
             EngineKind.ON_DEVICE -> "Speech: processed on this phone by Android's on-device recognizer (once its language pack is installed)."
             EngineKind.SYSTEM -> "Speech: handled by your phone's speech service (${d.engine.label}). Depending on that service, audio may be sent to its provider (for example Google or Samsung)."
             EngineKind.CLOUD -> "Speech: uploaded to ${s.cloudConfig()?.host ?: "your configured provider"} for transcription, only while you dictate."
@@ -156,7 +157,7 @@ class PrivacyScreen(host: MainActivity) : Screen(host) {
         if (recognitionOk || cleanupOk) {
             col.addView(ui.button("Withdraw all cloud permissions", Ui.ButtonStyle.OUTLINED) {
                 s.updatePrivacy { it.copy(recognitionConsent = null, cleanupConsent = null) }
-                s.updateDictation { it.copy(aiCleanupEnabled = false, engine = if (it.engine == EngineKind.CLOUD) EngineKind.ON_DEVICE else it.engine) }
+                s.updateDictation { it.copy(aiCleanupEnabled = false, engine = if (it.engine == EngineKind.CLOUD) EngineKind.LOCAL_MODEL else it.engine) }
                 host.refresh()
             })
         }

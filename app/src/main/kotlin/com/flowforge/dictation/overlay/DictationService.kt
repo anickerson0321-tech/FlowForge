@@ -76,6 +76,10 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
     private var packageAtStart: String? = null
     private var lastOutput: DictationOutput? = null
     private var showingOriginal = false
+    /** The current recording was started by press-and-hold (release finishes it). */
+    private var holdMode = false
+    private var holdInCancelZone = false
+    private var holdStartedAt = 0L
     /** Last (phase, text, error) the panel showed; level-only updates must not rebuild it. */
     private var lastPanelKey: Any? = null
     private var lastPhase: Phase = Phase.IDLE
@@ -320,46 +324,48 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
 
     override fun onBubbleTap() {
         val state = controller.state
+        if (state.phase == Phase.PROCESSING) return
         if (state.phase == Phase.ERROR) controller.dismiss()
+        holdMode = false
         if (!state.isRecording) packageAtStart = FlowForgeAccessibilityService.instance?.focusedPackage()
         controller.toggle()
     }
 
-    override fun onBubbleLongPress() {
-        if (controller.state.phase == Phase.PROCESSING) {
-            // Uploads and AI cleanup can take a while on a slow network; let the user give up.
-            controller.cancel()
-            panel.hide()
-            return
+    override fun onHoldStart() {
+        val state = controller.state
+        // Holding while a tap-started recording runs just finishes it on release.
+        if (state.isRecording || state.phase == Phase.PROCESSING) return
+        if (state.phase == Phase.ERROR) controller.dismiss()
+        packageAtStart = FlowForgeAccessibilityService.instance?.focusedPackage()
+        holdMode = true
+        holdInCancelZone = false
+        holdStartedAt = SystemClock.uptimeMillis()
+        controller.start()
+    }
+
+    override fun onHoldEnd(cancel: Boolean) {
+        val wasHold = holdMode
+        holdMode = false
+        holdInCancelZone = false
+        if (!controller.state.isRecording) return
+        val heldMs = SystemClock.uptimeMillis() - holdStartedAt
+        when {
+            cancel -> {
+                controller.cancel()
+                showMessage("Cancelled. Nothing was typed.")
+            }
+            wasHold && heldMs < MIN_HOLD_MS -> {
+                controller.cancel()
+                showMessage("Keep holding the bubble while you talk, or tap it once to start and again to finish.")
+            }
+            else -> controller.stop()
         }
-        if (controller.state.isRecording) {
-            showPanel(
-                "Recording", "Finish to insert, or cancel to discard what you said.",
-                listOf(
-                    OverlayPanel.Action("Cancel", Ui.ButtonStyle.OUTLINED) { controller.cancel(); panel.hide() },
-                    OverlayPanel.Action("Finish", Ui.ButtonStyle.FILLED) { controller.stop() },
-                ),
-            )
-            return
-        }
-        val settings = graph.settings
-        val mode = settings.dictation.cleanupMode
-        val next = CleanupMode.values()[(mode.ordinal + 1) % CleanupMode.values().size]
-        val a11y = FlowForgeAccessibilityService.instance
-        val actions = ArrayList<OverlayPanel.Action>()
-        if (a11y?.canUndo == true) actions += OverlayPanel.Action("Undo last") { showMessage(a11y.undoLast().message) }
-        actions += OverlayPanel.Action("Cleanup: ${mode.label}") {
-            settings.updateDictation { it.copy(cleanupMode = next) }
-            onBubbleLongPress()
-        }
-        actions += OverlayPanel.Action("Open app") {
-            panel.hide()
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-        actions += OverlayPanel.Action("Hide bubble", Ui.ButtonStyle.OUTLINED) { hideAndStop(userRequested = true) }
-        actions += OverlayPanel.Action("Close", Ui.ButtonStyle.TEXT) { panel.hide() }
-        val insertion = if (a11y == null) "Text insertion is off: results are shown here for copying." else "Results are typed into the focused field."
-        showPanel("FlowForge", "${mode.label} cleanup. $insertion Drag the bubble to the ✕ to hide it.", actions)
+    }
+
+    override fun onHoldCancelZone(inZone: Boolean) {
+        holdInCancelZone = inZone
+        lastPanelKey = null
+        render(controller.state)
     }
 
     private fun showPanel(
@@ -406,7 +412,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         }
         val previousPhase = lastPhase
         lastPhase = state.phase
-        val panelKey = Triple(state.phase, state.displayText, state.error)
+        val panelKey = listOf(state.phase, state.displayText, state.error, holdMode, holdInCancelZone)
         if (panelKey == lastPanelKey) return
         lastPanelKey = panelKey
         // Recording -> idle means the user cancelled: close the live panel. (Processing -> idle is a
@@ -414,7 +420,15 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
         if (state.phase == Phase.IDLE && (previousPhase == Phase.STARTING || previousPhase == Phase.LISTENING)) panel.hide()
         when (state.phase) {
             Phase.STARTING -> showPanel("Starting microphone…", null, emptyList())
-            Phase.LISTENING -> showPanel(
+            Phase.LISTENING -> if (holdMode) {
+                showPanel(
+                    if (holdInCancelZone) "Release to cancel" else "Listening — release to finish",
+                    state.displayText.ifBlank { if (holdInCancelZone) "Slide back to keep recording." else "Speak now… slide away to cancel." },
+                    emptyList(),
+                    transcript = true,
+                    live = true,
+                )
+            } else showPanel(
                 "Listening — tap the bubble when done",
                 state.displayText.ifBlank { if (FlowForgeAccessibilityService.isRunning) "Speak now…" else "Speak now… (text insertion is off; you'll be able to copy the result)" },
                 listOf(
@@ -454,7 +468,7 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         } else if (error.retryable) {
-            actions += OverlayPanel.Action("Try again") { controller.dismiss(); onBubbleTap() }
+            actions += OverlayPanel.Action("Try again") { controller.dismiss(); panel.hide(); onBubbleTap() }
         }
         actions += OverlayPanel.Action("Close", Ui.ButtonStyle.TEXT) { controller.dismiss(); panel.hide() }
         val body = buildString {
@@ -610,6 +624,8 @@ class DictationService : Service(), DictationController.Surface, BubbleView.Call
 
     companion object {
         private const val TAG = "FlowForgeBubble"
+        /** A hold shorter than this was probably meant as a tap; it's discarded, with a hint. */
+        private const val MIN_HOLD_MS = 450L
         const val ACTION_SHOW = "com.flowforge.dictation.action.SHOW_BUBBLE"
         const val ACTION_HIDE = "com.flowforge.dictation.action.HIDE_BUBBLE"
         const val ACTION_STOP_RECORDING = "com.flowforge.dictation.action.STOP_RECORDING"

@@ -16,6 +16,7 @@ object Notifications {
     const val CHANNEL_ALERTS = "alerts"
     const val ID_SERVICE = 1001
     const val ID_ALERT = 1002
+    const val ID_DOWNLOAD = 1003
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)

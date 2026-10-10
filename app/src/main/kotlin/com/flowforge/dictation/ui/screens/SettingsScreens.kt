@@ -13,13 +13,108 @@ import com.flowforge.core.cleanup.TextCleaner
 import com.flowforge.core.dictionary.PersonalDictionary
 import com.flowforge.core.privacy.CloudPurpose
 import com.flowforge.core.privacy.ConsentPolicy
+import com.flowforge.core.models.ModelCatalog
+import com.flowforge.core.models.SpeechModel
 import com.flowforge.core.recognition.EngineKind
+import com.flowforge.core.recognition.LocalModelStatus
 import com.flowforge.core.recognition.exposure
 import com.flowforge.core.settings.DictationSettings
 import com.flowforge.core.settings.InsertionPreference
+import com.flowforge.dictation.graph
+import com.flowforge.dictation.models.ModelDownloadService
+import com.flowforge.dictation.models.ModelDownloads
 import com.flowforge.dictation.speech.EngineAvailability
+import com.flowforge.dictation.speech.LocalAsr
 import com.flowforge.dictation.ui.MainActivity
 import com.flowforge.dictation.ui.kit.Ui
+
+// =================================================================================================
+// Offline model rows (Speech engine screen)
+// =================================================================================================
+
+private fun Screen.renderModels(ui: Ui, container: android.widget.LinearLayout, state: ModelDownloads.State) {
+    val host = hostActivity
+    val s = host.graph.settings
+    val installer = LocalAsr.installer(host)
+    val selected = LocalAsr.selectedModel(s)
+    container.removeAllViews()
+    if (!LocalAsr.deviceSupported()) {
+        container.addView(ui.banner("This phone isn't a 64-bit ARM device, so the offline model can't run here.", Ui.Tone.WARNING))
+        return
+    }
+    for (model in ModelCatalog.all) {
+        val installed = installer.isInstalled(model)
+        val running = state as? ModelDownloads.State.Running
+        val card = ui.column(spacingDp = 4)
+        card.addView(ui.body(model.label))
+        card.addView(ui.caption(model.summary + "\nLicense: ${model.license}."))
+        val status = when {
+            running?.modelId == model.id -> "Downloading and checking… ${running.percent}% (${running.read / 1_000_000} of ${running.total / 1_000_000} MB). You can leave this screen."
+            state is ModelDownloads.State.Failed && state.modelId == model.id -> "Last download failed: ${state.message}"
+            installed && model.id == selected.id -> "Installed and in use."
+            installed -> "Installed."
+            else -> "Not downloaded."
+        }
+        card.addView(ui.caption(status))
+        val buttons = ui.row(8)
+        when {
+            running?.modelId == model.id -> buttons.addView(ui.button("Cancel download", Ui.ButtonStyle.OUTLINED) { ModelDownloadService.cancel(host) })
+            installed -> {
+                if (model.id != selected.id) {
+                    buttons.addView(ui.button("Use this model", Ui.ButtonStyle.TONAL) {
+                        s.updateDictation { it.copy(localModelId = model.id, engine = EngineKind.LOCAL_MODEL) }
+                        LocalAsr.unloadNow()
+                        host.refresh()
+                    })
+                }
+                buttons.addView(ui.button("Delete", Ui.ButtonStyle.TEXT) {
+                    AlertDialog.Builder(host)
+                        .setTitle("Delete ${model.label}?")
+                        .setMessage("Frees about ${model.installedMb} MB. You can download it again later.")
+                        .setPositiveButton("Delete") { _, _ ->
+                            LocalAsr.unloadNow()
+                            host.graph.background({ installer.delete(model) }) { host.refresh() }
+                        }
+                        .setNegativeButton("Keep", null)
+                        .show()
+                })
+            }
+            running == null -> buttons.addView(ui.button("Download (${model.downloadMb} MB)", Ui.ButtonStyle.FILLED) { confirmDownload(host, model) })
+        }
+        card.addView(buttons)
+        container.addView(ui.card(card), ui.matchWidth())
+    }
+}
+
+private fun confirmDownload(host: MainActivity, model: SpeechModel) {
+    val free = LocalAsr.modelsRoot(host).let { it.mkdirs(); it.usableSpace }
+    val needed = model.installedBytes + 200_000_000L
+    if (free in 1 until needed) {
+        AlertDialog.Builder(host)
+            .setTitle("Not enough storage")
+            .setMessage("${model.label} needs about ${needed / 1_000_000} MB free; this phone has ${free / 1_000_000} MB. Free up space and try again.")
+            .setPositiveButton("OK", null)
+            .show()
+        return
+    }
+    if (!EngineAvailability.networkAvailable(host)) {
+        host.toast("No internet connection. Connect to Wi-Fi and try again.")
+        return
+    }
+    val cm = host.getSystemService(android.net.ConnectivityManager::class.java)
+    val metered = cm?.isActiveNetworkMetered ?: true
+    val message = buildString {
+        append("FlowForge will download ${model.downloadMb} MB from the sherpa-onnx project on GitHub, check it against a fixed fingerprint, and install it (${model.installedMb} MB on the phone). ")
+        append("After that, dictation with this model works offline and your audio never leaves the phone.")
+        if (metered) append("\n\nYou're on a metered connection (mobile data). Wi-Fi is recommended.")
+    }
+    AlertDialog.Builder(host)
+        .setTitle("Download ${model.label}?")
+        .setMessage(message)
+        .setPositiveButton("Download") { _, _ -> ModelDownloadService.download(host, model) }
+        .setNegativeButton("Not now", null)
+        .show()
+}
 
 // =================================================================================================
 // Dictation settings
@@ -34,7 +129,7 @@ class DictationSettingsScreen(host: MainActivity) : Screen(host) {
         fun update(change: (DictationSettings) -> DictationSettings) = s.updateDictation(change)
         return ui.column(spacingDp = 6).apply {
             addView(ui.heading("Recording"))
-            addView(ui.switchRow("Keep listening through pauses", "Dictate long passages; tap the bubble or mic when finished. Stops by itself after 20 seconds of silence.", d.continuous) { v -> update { it.copy(continuous = v) } })
+            addView(ui.switchRow("Keep listening through pauses", "For Android's recognizer: keep going through pauses until you finish (stops after 20 seconds of silence). The offline model always records until you let go or tap again.", d.continuous) { v -> update { it.copy(continuous = v) } })
             addView(ui.body("Maximum recording length"))
             addView(ui.radioGroup(DictationSettings.MAX_RECORDING_CHOICES, d.maxRecordingSeconds, { secs -> "${secs / 60} minute" + (if (secs >= 120) "s" else "") to null }) { v -> update { it.copy(maxRecordingSeconds = v) } })
             addView(ui.switchRow("Haptic feedback", "A short vibration when recording starts and stops.", d.haptics) { v -> update { it.copy(haptics = v) } })
@@ -88,17 +183,39 @@ class DictationSettingsScreen(host: MainActivity) : Screen(host) {
 
 class EngineScreen(host: MainActivity) : Screen(host) {
     override val title = "Speech engine"
+    private var downloadListener: ((ModelDownloads.State) -> Unit)? = null
+
+    override fun onDestroy() {
+        downloadListener?.let(ModelDownloads::unobserve)
+        downloadListener = null
+    }
 
     override fun build(ui: Ui): View {
         val s = graph.settings
         val d = s.dictation
         val onDevice = EngineAvailability.onDeviceAvailable(host)
         val system = EngineAvailability.systemAvailable(host)
+        val local = LocalAsr.status(host, s)
         val col = ui.column(spacingDp = 8)
+
+        col.addView(ui.heading("Offline speech model"))
+        col.addView(ui.caption("FlowForge's own recognizer. It records continuously and transcribes on this phone, so nothing is cut off between sentences and no internet is needed after the download. English only."))
+        val models = ui.column(spacingDp = 8)
+        col.addView(models, ui.matchWidth())
+        downloadListener?.let(ModelDownloads::unobserve)
+        val listener: (ModelDownloads.State) -> Unit = { state -> renderModels(ui, models, state) }
+        downloadListener = listener
+        ModelDownloads.observe(listener)
 
         col.addView(ui.heading("Engine"))
         col.addView(ui.radioGroup(EngineKind.values().toList(), d.engine, { k ->
             val avail = when (k) {
+                EngineKind.LOCAL_MODEL -> when (local) {
+                    LocalModelStatus.READY -> "Ready: ${LocalAsr.selectedModel(s).label}."
+                    LocalModelStatus.NOT_DOWNLOADED -> "Download a model above first. Until then, Android's recognizer is used."
+                    LocalModelStatus.LANGUAGE_UNSUPPORTED -> "The models are English-only; your dictation language isn't English."
+                    LocalModelStatus.DEVICE_UNSUPPORTED -> "Needs a 64-bit ARM phone."
+                }
                 EngineKind.ON_DEVICE -> if (onDevice) "Available on this phone." else "Not available on this phone."
                 EngineKind.SYSTEM -> if (system) "Available." else "No speech service installed."
                 EngineKind.CLOUD -> if (s.cloudConfig() != null) "Configured for ${s.cloudConfig()?.host}." else "Not set up (see below)."

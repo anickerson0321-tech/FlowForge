@@ -33,7 +33,7 @@ data class AppSettings(
     val snoozeUntilMillis: Long = 0,
     // manual reading
     val manualRoute: RouteRestriction = RouteRestriction.ANY,
-    val pendingTtlMinutes: Int = 10,
+    val pendingTtlMinutes: Int = 60,
     val showReadNotification: Boolean = true,
     // voices
     val defaultVoice: String = "kokoro:af_heart",
@@ -52,7 +52,7 @@ data class AppSettings(
     // floating button
     val floatingEnabled: Boolean = false,
     val floatingAlpha: Float = 0.85f,
-    val floatingHideWhenEmpty: Boolean = true,
+    val floatingHideWhenEmpty: Boolean = false,
     val floatingHideOnLockScreen: Boolean = true,
     val floatingX: Float = 0.92f,
     val floatingY: Float = 0.6f,
@@ -61,6 +61,10 @@ data class AppSettings(
     val extraApps: Set<String> = emptySet(),
     val readAnyMessagingApp: Boolean = true,
     val onboardingDone: Boolean = false,
+    // opt-in: read the SMS inbox on demand (READ_SMS)
+    val smsHistoryEnabled: Boolean = false,
+    /** Forget a message as soon as its notification is dismissed or opened (off: keep until it expires). */
+    val forgetOnDismiss: Boolean = false,
 )
 
 /** SharedPreferences-backed settings (excluded from backups via the manifest). */
@@ -111,7 +115,7 @@ class SettingsRepository(context: Context) {
             preferSystemEngine = p.getBoolean("preferSystemEngine", d.preferSystemEngine),
             floatingEnabled = p.getBoolean("floatingEnabled", d.floatingEnabled),
             floatingAlpha = p.getFloat("floatingAlpha", d.floatingAlpha),
-            floatingHideWhenEmpty = p.getBoolean("floatingHideWhenEmpty", d.floatingHideWhenEmpty),
+            floatingHideWhenEmpty = p.getBoolean("floatingHideWhenEmpty2", d.floatingHideWhenEmpty),
             floatingHideOnLockScreen = p.getBoolean("floatingHideOnLockScreen", d.floatingHideOnLockScreen),
             floatingX = p.getFloat("floatingX", d.floatingX),
             floatingY = p.getFloat("floatingY", d.floatingY),
@@ -119,6 +123,8 @@ class SettingsRepository(context: Context) {
             extraApps = p.getStringSet("extraApps", null)?.toSet() ?: d.extraApps,
             readAnyMessagingApp = p.getBoolean("readAnyMessagingApp", d.readAnyMessagingApp),
             onboardingDone = p.getBoolean("onboardingDone", d.onboardingDone),
+            smsHistoryEnabled = p.getBoolean("smsHistoryEnabled", d.smsHistoryEnabled),
+            forgetOnDismiss = p.getBoolean("forgetOnDismiss", d.forgetOnDismiss),
         )
     }
 
@@ -153,7 +159,7 @@ class SettingsRepository(context: Context) {
             .putBoolean("preferSystemEngine", s.preferSystemEngine)
             .putBoolean("floatingEnabled", s.floatingEnabled)
             .putFloat("floatingAlpha", s.floatingAlpha)
-            .putBoolean("floatingHideWhenEmpty", s.floatingHideWhenEmpty)
+            .putBoolean("floatingHideWhenEmpty2", s.floatingHideWhenEmpty)
             .putBoolean("floatingHideOnLockScreen", s.floatingHideOnLockScreen)
             .putFloat("floatingX", s.floatingX)
             .putFloat("floatingY", s.floatingY)
@@ -161,6 +167,8 @@ class SettingsRepository(context: Context) {
             .putStringSet("extraApps", s.extraApps)
             .putBoolean("readAnyMessagingApp", s.readAnyMessagingApp)
             .putBoolean("onboardingDone", s.onboardingDone)
+            .putBoolean("smsHistoryEnabled", s.smsHistoryEnabled)
+            .putBoolean("forgetOnDismiss", s.forgetOnDismiss)
             .apply()
     }
 

@@ -16,18 +16,33 @@ class PrivateVoiceListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         graph.listenerConnected.value = true
-        // Messages already on screen when we connect are not read automatically.
+        graph.listenerService = java.lang.ref.WeakReference(this)
+        // Messages already in the notification shade become available to read on demand
+        // (never read automatically).
+        loadExistingNotifications()
+    }
+
+    /** Adds message notifications currently in the shade to the waiting list. Returns how many were added. */
+    fun loadExistingNotifications(): Int {
+        var added = 0
+        val settings = graph.settings.current
+        val supported = SupportedApps.DEFAULT.keys + settings.extraApps
         runCatching {
-            activeNotifications?.forEach { sbn ->
+            activeNotifications?.sortedBy { it.postTime }?.forEach { sbn ->
                 if (sbn.packageName == packageName) return@forEach
                 val snap = AndroidNotificationExtractor.extract(sbn)
-                graph.reader.primeExisting(snap.key, graph.parser.parse(snap))
+                if (!graph.parser.isCandidate(snap, supported, settings.readAnyMessagingApp)) return@forEach
+                val parsed = graph.parser.parse(snap)
+                if (parsed.isEmpty()) return@forEach
+                added += graph.reader.addExisting(snap.key, snap.packageName, graph.appLabel(snap.packageName), parsed)
             }
         }
+        return added
     }
 
     override fun onListenerDisconnected() {
         graph.listenerConnected.value = false
+        graph.listenerService = null
         graph.reader.onListenerDisconnected()
         // Ask the system to bind us again (e.g. after the process was trimmed).
         runCatching { requestRebind(ComponentName(this, PrivateVoiceListenerService::class.java)) }
@@ -39,9 +54,16 @@ class PrivateVoiceListenerService : NotificationListenerService() {
             val settings = graph.settings.current
             val snap = AndroidNotificationExtractor.extract(sbn)
             val supported = SupportedApps.DEFAULT.keys + settings.extraApps
-            if (!graph.parser.isCandidate(snap, supported, settings.readAnyMessagingApp)) return
+            graph.diagnostics.value = graph.diagnostics.value.let { it.copy(notificationsSeen = it.notificationsSeen + 1) }
+            if (!graph.parser.isCandidate(snap, supported, settings.readAnyMessagingApp)) {
+                if (snap.packageName in supported) graph.diagnostics.value = graph.diagnostics.value.copy(lastIgnoredApp = graph.appLabel(snap.packageName))
+                return
+            }
             val parsed = graph.parser.parse(snap)
             if (parsed.isEmpty()) return
+            graph.diagnostics.value = graph.diagnostics.value.let {
+                it.copy(messageNotificationsSeen = it.messageNotificationsSeen + 1, lastMessageAtMillis = System.currentTimeMillis(), lastMessageApp = graph.appLabel(snap.packageName))
+            }
             graph.reader.onMessagesPosted(snap.key, snap.packageName, graph.appLabel(snap.packageName), parsed)
         } catch (e: Exception) {
             // Malformed notification extras: ignore. Never log notification contents.

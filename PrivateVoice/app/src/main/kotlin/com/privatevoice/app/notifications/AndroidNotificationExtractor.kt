@@ -54,7 +54,8 @@ object AndroidNotificationExtractor {
                     val person = m.senderPerson
                     SnapshotMessage(
                         senderName = person?.name?.toString(),
-                        senderKey = person?.key ?: person?.uri,
+                        // Prefer a phone number URI: it is stable and links to SMS history assignments.
+                        senderKey = person?.uri?.takeIf { it.startsWith("tel:") } ?: person?.key ?: person?.uri,
                         text = m.text?.toString(),
                         timestamp = m.timestamp,
                         // MessagingStyle uses a null sender for the device user's own messages.

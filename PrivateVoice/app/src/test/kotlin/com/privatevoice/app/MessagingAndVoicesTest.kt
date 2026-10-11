@@ -120,6 +120,14 @@ class MessagingAndVoicesTest {
         assertEquals(girlfriend, resolver.match(SenderRef("Sarah ❤️", "tel:+15550001", "msgs"), listOf(girlfriend)))
     }
 
+    @Test fun phoneNumbersMatchAcrossFormats() {
+        val mom = asg("1", "Mom", key = "tel:+15551234567", voice = "kokoro:af_sarah")
+        assertEquals(mom, resolver.match(SenderRef("Mom", "tel:5551234567", "com.google.android.apps.messaging"), listOf(mom)))
+        assertEquals(mom, resolver.match(SenderRef("x", "tel:+1 (555) 123-4567", "sms"), listOf(mom)))
+        assertNull(resolver.match(SenderRef("x", "tel:+15551234568", "sms"), listOf(mom)))
+        assertNull(resolver.match(SenderRef("x", "contact-key-123", "sms"), listOf(mom)))
+    }
+
     @Test fun nameMatchingIsExactAndPrefersSameApp() {
         val any = asg("1", "Alex", voice = "kokoro:am_adam")
         val wa = asg("2", "Alex", app = "com.whatsapp", voice = "kokoro:am_onyx")

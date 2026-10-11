@@ -70,11 +70,35 @@ object Screens {
             a.live += {
                 val p = g.repository.state.value
                 pendingLabel.text = when {
-                    p.count == 0 -> "No messages waiting. New messages appear here for ${s.pendingTtlMinutes} min."
+                    p.count == 0 && p.total > 0 -> "No new messages · ${p.total} recent message(s) you can hear again below"
+                    p.count == 0 -> "No messages waiting yet. New messages will appear here."
                     p.count == 1 -> "1 message waiting from ${p.latestSender}${p.latestAppLabel?.let { " · $it" } ?: ""}"
                     else -> "${p.count} messages waiting · latest from ${p.latestSender}"
                 }
-                readBtn.alpha = if (p.count == 0) 0.6f else 1f
+                readBtn.alpha = if (p.total == 0) 0.6f else 1f
+            }
+        }
+
+        // Try it without receiving a text
+        root.sectionHeader("Check that it works")
+        root.card {
+            body("No texts coming in? Play a sample message to hear the voices, or pull in messages that are already sitting in your notification shade.", Palette.TEXT_DIM)
+            buttonRow {
+                tonalButton("▶  Play a test message") { g.reader.playTestMessage() }
+                outlineButton("Check notifications") {
+                    when (val n = g.rescanNotifications()) {
+                        null -> g.toast("Notification access isn't connected yet")
+                        0 -> g.toast("No new message notifications in the shade")
+                        else -> g.toast("Found $n message(s) — tap Read latest message")
+                    }
+                    a.render()
+                }
+            }
+            if (g.settings.current.smsHistoryEnabled || g.smsInbox.hasPermission()) {
+                outlineButton("Open text message history") { a.navigate(Screen.SMS) }
+            } else {
+                caption("Want to hear older texts too? Open Text Messages to read your SMS inbox (optional).").layoutParams = lp(top = 6)
+                outlineButton("Text Messages (SMS history)") { a.navigate(Screen.SMS) }
             }
         }
 
@@ -87,6 +111,17 @@ object Screens {
             val (auto, autoDot) = statusRow("Automatic reading", "", null)
             val (play, playDot) = statusRow("Playback", "", null)
             val (route, _) = statusRow("Audio output", "", null)
+            val (seen, seenDot) = statusRow("Last message seen", "", null)
+            a.live += {
+                val d = g.diagnostics.value
+                seen.text = if (d.lastMessageAtMillis == 0L) {
+                    if (d.notificationsSeen == 0) "None yet since the app started" else "None yet (${d.notificationsSeen} other notifications)"
+                } else {
+                    val mins = (System.currentTimeMillis() - d.lastMessageAtMillis) / 60_000
+                    (if (mins < 1) "Just now" else "$mins min ago") + " · ${d.lastMessageApp}"
+                }
+                seenDot.background = rounded(statusColor(if (d.lastMessageAtMillis > 0) true else null), 6)
+            }
             a.live += {
                 val ok = a.notificationAccessGranted()
                 val connected = g.listenerConnected.value
@@ -131,8 +166,7 @@ object Screens {
             }
             divider()
             switchRow("Floating read button", "A small movable button over other apps", s.floatingEnabled) { v ->
-                if (v && !g.overlay.canDraw()) { a.openOverlaySettings(); g.toast("Allow \"Display over other apps\", then turn this on again"); a.render() }
-                else { g.settings.update { it.copy(floatingEnabled = v) } }
+                if (v) a.enableFloatingButton() else { g.pendingOverlayEnable = false; g.settings.update { it.copy(floatingEnabled = false) } }
             }
             divider()
             valueRow("Default voice", voiceName(a, s.defaultVoice)) { Dialogs.pickVoice(a, "Default voice", s.defaultVoice) { id -> g.settings.update { it.copy(defaultVoice = id) }; a.render() } }
@@ -141,6 +175,7 @@ object Screens {
         root.sectionHeader("More")
         root.card {
             navRow("♪", "Voice Studio", "Voices, previews, speed, announcer") { a.navigate(Screen.VOICES) }
+            navRow("✉", "Text Messages", "Read older texts from your SMS inbox (optional)") { a.navigate(Screen.SMS) }
             navRow("☺", "People & Voices", "${g.assignments.assignments.value.size} saved · give people their own voice") { a.navigate(Screen.PEOPLE) }
             navRow("⟳", "Automatic Reading", "Headphones, quiet hours, calls, groups") { a.navigate(Screen.AUTO) }
             navRow("◉", "Floating Button & Shortcuts", "Overlay, Quick Settings tile") { a.navigate(Screen.CONTROLS) }
@@ -151,13 +186,16 @@ object Screens {
         // Waiting messages (sender + app only; never the text)
         val pending = g.repository.all()
         if (pending.isNotEmpty()) {
-            root.sectionHeader("Waiting to be read")
+            root.sectionHeader("Recent messages")
             root.card {
+                caption("Kept in memory so you can listen again, even after opening the conversation. Text is never shown or saved.").layoutParams = lp(bottom = 4)
                 pending.asReversed().forEach { m ->
-                    val left = ((g.repository.ttlMillis - (SystemClock.elapsedRealtime() - m.receivedAtElapsed)) / 60_000).coerceAtLeast(0)
+                    val leftMin = ((g.repository.ttlMillis - (SystemClock.elapsedRealtime() - m.receivedAtElapsed)) / 60_000).coerceAtLeast(0) + 1
+                    val left = if (leftMin >= 120) "${leftMin / 60} h" else "$leftMin min"
                     val where = m.conversationTitle?.let { " in $it" } ?: ""
                     val hidden = if (m.contentAvailable) "" else " · text not shared by app"
-                    valueRow("${m.sender.displayName}$where", "Read ▶", "${m.appLabel} · expires in ${left + 1} min$hidden") {
+                    val state = if (m.heard) "heard" else "new"
+                    valueRow("${m.sender.displayName}$where", if (m.heard) "Hear again ▶" else "Read ▶", "${m.appLabel} · $state · kept $left more$hidden") {
                         g.reader.readMessage(m.id); a.render()
                     }
                 }
@@ -372,7 +410,14 @@ object Screens {
             val f = flow()
             RouteRestriction.entries.forEach { r -> f.chip(RoutePolicy.describe(r), s.manualRoute == r) { g.settings.update { it.copy(manualRoute = r) }; a.render() } }
             addView(f)
-            slider("Forget unread messages after", 1f, 60f, s.pendingTtlMinutes.toFloat(), 1f, { "${it.toInt()} min" }) { v -> g.settings.update { it.copy(pendingTtlMinutes = v.toInt()) } }
+            caption("Keep messages to listen again for").layoutParams = lp(top = 12)
+            val keep = flow()
+            listOf(10 to "10 min", 60 to "1 hour", 240 to "4 hours", 1440 to "24 hours").forEach { (mins, label) ->
+                keep.chip(label, s.pendingTtlMinutes == mins) { g.settings.update { it.copy(pendingTtlMinutes = mins) }; a.render() }
+            }
+            addView(keep)
+            caption("Held only in memory: if Android closes PrivateVoice in the background, the list is lost. Regular SMS texts can always be heard again from Text Messages.")
+            switchRow("Forget a message once I open it", "Off: it stays in Recent messages until the time above", s.forgetOnDismiss) { v -> g.settings.update { it.copy(forgetOnDismiss = v) } }
             switchRow("Show Read aloud notification", "PrivateVoice's own controls (never shows message text)", s.showReadNotification) { v -> g.settings.update { it.copy(showReadNotification = v) } }
         }
 
@@ -399,9 +444,9 @@ object Screens {
         root.card {
             val can = g.overlay.canDraw()
             switchRow("Show floating read button", if (can) "Tap: read latest · Long-press: controls · Drag to move" else "Needs \"Display over other apps\" permission", s.floatingEnabled) { v ->
-                if (v && !g.overlay.canDraw()) { a.openOverlaySettings(); a.render() } else { g.settings.update { it.copy(floatingEnabled = v) }; a.render() }
+                if (v) a.enableFloatingButton() else { g.pendingOverlayEnable = false; g.settings.update { it.copy(floatingEnabled = false) }; a.render() }
             }
-            if (!can) tonalButton("Grant overlay permission") { a.openOverlaySettings() }
+            if (!can) tonalButton("Grant overlay permission") { a.enableFloatingButton() }
             slider("Transparency", 0.3f, 1f, s.floatingAlpha, 0.05f, { "${(it * 100).toInt()}% opaque" }) { v -> g.settings.update { it.copy(floatingAlpha = v) } }
             switchRow("Hide when no message is waiting", null, s.floatingHideWhenEmpty) { v -> g.settings.update { it.copy(floatingHideWhenEmpty = v) } }
             switchRow("Hide on the lock screen", "Recommended for privacy", s.floatingHideOnLockScreen) { v -> g.settings.update { it.copy(floatingHideOnLockScreen = v) } }
@@ -455,7 +500,9 @@ object Screens {
         root.card {
             val count = caption("")
             a.live += { count.text = "${g.repository.state.value.count} message(s) held in memory right now." }
-            body("Message text is kept only in memory, for at most ${g.settings.current.pendingTtlMinutes} minutes (or until read), and speech audio only in memory for Repeat. Both are cleared when playback is stopped and cleared, when they expire, when automatic reading is turned off, when notification access is removed, and when the app closes.", Palette.TEXT_DIM)
+            val keepMin = g.settings.current.pendingTtlMinutes
+            val keepText = if (keepMin >= 60) "${keepMin / 60} hour(s)" else "$keepMin minutes"
+            body("Message text is kept only in memory, for at most $keepText so you can listen again, and speech audio only in memory for Repeat (at most 30 minutes). Both are cleared when they expire, when you tap Clear, when automatic reading is turned off, when notification access is removed, and when the app closes. Text message history (if you turned it on) is read straight from your SMS inbox each time and never copied.", Palette.TEXT_DIM)
             primaryButton("Clear temporary content now") { g.privacy.clearTemporaryContent(); g.toast("Temporary content cleared"); a.render() }
         }
 
@@ -480,6 +527,101 @@ object Screens {
                     "• If you choose the system voice, speech is produced by your phone's installed text-to-speech app (offline voices only).",
                 Palette.TEXT_DIM,
             )
+        }
+    }
+
+    // ------------------------------------------------------------------ Text message history (opt-in SMS)
+    fun sms(a: MainActivity, root: LinearLayout) = with(a.ui) {
+        val g = a.graph
+        val inbox = g.smsInbox
+        if (!inbox.hasPermission()) {
+            root.card {
+                headline("Read your text message history")
+                body(
+                    "PrivateVoice can read texts that are already on your phone (your SMS inbox), not just new ones. " +
+                        "Android will ask you to allow SMS access.",
+                ).layoutParams = lp(top = 6, bottom = 6)
+                body(
+                    "Texts are read only when you tap them — never copied, saved, uploaded, or shown anywhere else. " +
+                        "This is optional and off until you allow it.",
+                    Palette.TEXT_DIM,
+                )
+                primaryButton("Allow SMS access") { a.requestReadSms() }
+                caption("If Android says \"Restricted setting\": open App info → ⋮ menu → \"Allow restricted settings\", then try again.").layoutParams = lp(top = 4)
+                outlineButton("Open App info") { a.openAppInfo() }
+            }
+            root.card {
+                headline("Good to know")
+                body(
+                    "• Chat/RCS messages (the ones Google Messages or Samsung Messages send over data) are stored privately by those apps, " +
+                        "so they can't be read from history — PrivateVoice reads those from their notifications instead.\n" +
+                        "• Without Contacts access, senders show as phone numbers. Tap \"Name & voice\" on a message to give that number a name and its own voice.",
+                    Palette.TEXT_DIM,
+                )
+            }
+            return@with
+        }
+        if (!g.settings.current.smsHistoryEnabled) g.settings.update { it.copy(smsHistoryEnabled = true) }
+        val assignments = g.assignments.assignments.value
+        val items = inbox.recent(40)
+        root.caption("Your ${items.size} most recent texts. Tap ▶ to hear one. Nothing here is saved.").layoutParams = lp(bottom = 8)
+        root.buttonRow {
+            tonalButton("▶  Newest unread") {
+                val unread = inbox.recent(5, unreadOnly = true)
+                if (unread.isEmpty()) g.toast("No unread texts")
+                unread.reversed().forEachIndexed { i, item ->
+                    g.reader.readNow(com.privatevoice.app.sms.SmsSenders.sender(item.address, assignments, g.resolver), null, item.body, interrupt = i == 0)
+                    item.wipe()
+                }
+            }
+            outlineButton("↻  Refresh") { a.render() }
+        }
+        if (items.isEmpty()) {
+            root.card { body("Your SMS inbox is empty.", Palette.TEXT_DIM) }
+        } else {
+            root.card {
+                items.forEachIndexed { index, item ->
+                    if (index > 0) divider()
+                    val label = com.privatevoice.app.sms.SmsSenders.listLabel(item.address, assignments, g.resolver)
+                    val whenText = android.text.format.DateUtils.getRelativeTimeSpanString(
+                        item.dateMillis, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
+                    ).toString()
+                    addView(row {
+                        minimumHeight = dp(64)
+                        val texts = column { layoutParams = lp(w = 0, weight = 1f, end = 8) }
+                        texts.text(label, 16f, Palette.TEXT, bold = !item.read)
+                        texts.caption(whenText + if (!item.read) " · unread" else "")
+                        addView(texts)
+                        addView(android.widget.TextView(a).apply {
+                            text = "▶"; textSize = 18f; gravity = android.view.Gravity.CENTER; setTextColor(Palette.ON_PRIMARY)
+                            contentDescription = "Read message from $label"
+                            background = ripple(rounded(Palette.PRIMARY, 24))
+                            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) }
+                            setOnClickListener {
+                                g.reader.readNow(com.privatevoice.app.sms.SmsSenders.sender(item.address, assignments, g.resolver), null, item.body)
+                            }
+                        })
+                        addView(android.widget.TextView(a).apply {
+                            text = "Name &\nvoice"; textSize = 12f; gravity = android.view.Gravity.CENTER; setTextColor(Palette.TEXT)
+                            contentDescription = "Give $label a name and voice"
+                            background = ripple(rounded(Palette.SURFACE_HIGH, 14, Palette.OUTLINE))
+                            layoutParams = LinearLayout.LayoutParams(dp(64), dp(48))
+                            setOnClickListener {
+                                val key = com.privatevoice.app.voices.PhoneNumbers.toKey(item.address)
+                                val existing = g.resolver.match(com.privatevoice.app.model.SenderRef(item.address, key, com.privatevoice.app.sms.SmsSenders.PACKAGE), assignments)
+                                Dialogs.editAssignment(a, existing, prefillKey = key)
+                            }
+                        })
+                    })
+                }
+            }
+        }
+        root.outlineButton("Stop using text history", Palette.DANGER) {
+            g.settings.update { it.copy(smsHistoryEnabled = false) }
+            // Android removes the permission when the app next closes.
+            runCatching { a.revokeSelfPermissionOnKill(android.Manifest.permission.READ_SMS) }
+            g.toast("SMS access will be removed when PrivateVoice closes")
+            a.navigate(Screen.DASHBOARD)
         }
     }
 

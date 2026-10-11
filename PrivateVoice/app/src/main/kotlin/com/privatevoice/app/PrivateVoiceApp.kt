@@ -93,6 +93,23 @@ class AppGraph(val app: Application) {
     val appVisible = MutableStateFlow(false)
     val notifier = ControlsNotifier(app)
     private val labels = ConcurrentHashMap<String, String>()
+    val smsInbox = com.privatevoice.app.sms.SmsInbox(app)
+
+    /** What the notification listener has seen since the app started (no message content). */
+    data class Diagnostics(
+        val notificationsSeen: Int = 0,
+        val messageNotificationsSeen: Int = 0,
+        val lastMessageAtMillis: Long = 0,
+        val lastMessageApp: String? = null,
+        val lastIgnoredApp: String? = null,
+    )
+    val diagnostics = MutableStateFlow(Diagnostics())
+
+    /** The connected listener, used to re-check notifications already in the shade. */
+    @Volatile var listenerService: java.lang.ref.WeakReference<com.privatevoice.app.notifications.PrivateVoiceListenerService>? = null
+
+    /** Set when the user turned on the floating button but still had to grant the overlay permission. */
+    @Volatile var pendingOverlayEnable = false
 
     val player = SpeechPlayer(app, kokoro, systemTts, routes, { settings.current }, scope, enterForeground = { ensureForegroundForAudio() })
 
@@ -194,6 +211,16 @@ class AppGraph(val app: Application) {
         if (appVisible.value || playbackForeground.value) return true
         startPlaybackService()
         return withTimeoutOrNull(1500) { playbackForeground.first { it } } ?: false
+    }
+
+    /**
+     * Adds message notifications that are currently in the notification shade to the waiting
+     * list (they are not read automatically). Returns how many messages were added, or null if
+     * notification access isn't connected.
+     */
+    fun rescanNotifications(): Int? {
+        val svc = listenerService?.get() ?: return null
+        return svc.loadExistingNotifications()
     }
 
     fun appLabel(pkg: String): String = labels.getOrPut(pkg) {

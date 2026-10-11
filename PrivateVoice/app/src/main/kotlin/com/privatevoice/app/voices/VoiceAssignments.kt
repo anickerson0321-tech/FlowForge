@@ -109,6 +109,37 @@ class EncryptedFileAssignmentRepository(
     }
 }
 
+/**
+ * Phone-number helpers so a voice assigned to a number matches the same person in SMS
+ * history ("+1 (555) 123-4567") and in messaging-app notifications ("tel:+15551234567").
+ */
+object PhoneNumbers {
+    private val PHONEISH = Regex("^(tel:)?[+0-9 ().\\-]{7,}$")
+
+    /** Last 10 digits of a phone-number-like string, or null if it isn't one. */
+    fun normalize(s: String?): String? {
+        if (s == null || !PHONEISH.matches(s.trim())) return null
+        val digits = s.filter { it.isDigit() }
+        return if (digits.length >= 7) digits.takeLast(10) else null
+    }
+
+    fun toKey(address: String): String = "tel:" + address.filter { it.isDigit() || it == '+' }
+
+    /** Exact key equality, or the same phone number written differently. */
+    fun sameKey(a: String?, b: String?): Boolean {
+        if (a == null || b == null) return false
+        if (a == b) return true
+        val na = normalize(a) ?: return false
+        return na == normalize(b)
+    }
+
+    /** "a number ending in 4 5 6 7" (spoken digit by digit). */
+    fun spokenFallbackName(address: String): String {
+        val digits = address.filter { it.isDigit() }
+        return if (digits.length >= 4) "a number ending in " + digits.takeLast(4).toList().joinToString(" ") else address.ifBlank { "an unknown sender" }
+    }
+}
+
 /** Result of voice resolution for one message. */
 data class VoiceChoice(
     val messageVoice: String,
@@ -150,7 +181,7 @@ class DefaultVoiceSelectionResolver : VoiceSelectionResolver {
     override fun match(sender: SenderRef, assignments: List<SenderAssignment>): SenderAssignment? {
         val key = sender.stableKey
         if (key != null) {
-            assignments.filter { it.matchKey == key && (it.appPackage == null || it.appPackage == sender.appPackage) }
+            assignments.filter { PhoneNumbers.sameKey(it.matchKey, key) && (it.appPackage == null || it.appPackage == sender.appPackage) }
                 .minByOrNull { it.id }?.let { return it }
         }
         val name = normName(sender.displayName)

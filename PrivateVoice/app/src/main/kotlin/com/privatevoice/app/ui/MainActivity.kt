@@ -39,6 +39,7 @@ enum class Screen(val glyph: String, val title: String) {
     DASHBOARD("⌂", "Home"),
     VOICES("♪", "Voice Studio"),
     PEOPLE("☺", "People & Voices"),
+    SMS("✉", "Text Messages"),
     AUTO("⟳", "Automatic Reading"),
     CONTROLS("◉", "Floating Button & Shortcuts"),
     PRIVACY("⛨", "Privacy Center"),
@@ -82,6 +83,12 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Coming back from "Display over other apps": finish turning the floating button on.
+        if (graph.pendingOverlayEnable && graph.overlay.canDraw()) {
+            graph.pendingOverlayEnable = false
+            graph.settings.update { it.copy(floatingEnabled = true) }
+            graph.toast("Floating button is on")
+        }
         graph.appVisible.value = true
         graph.routes.refresh()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -135,6 +142,7 @@ class MainActivity : Activity() {
             Screen.CONTROLS -> Screens.controls(this, content)
             Screen.PRIVACY -> Screens.privacy(this, content)
             Screen.ABOUT -> Screens.about(this, content)
+            Screen.SMS -> Screens.sms(this, content)
         }
         val sv = ScrollView(this).apply {
             isFillViewport = true
@@ -247,6 +255,22 @@ class MainActivity : Activity() {
         requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
     }
 
+    fun requestReadSms() {
+        requestPermissions(arrayOf(Manifest.permission.READ_SMS), REQ_SMS)
+    }
+
+    /** Turns the floating button on, sending the user to grant the overlay permission first if needed. */
+    fun enableFloatingButton() {
+        if (graph.overlay.canDraw()) {
+            graph.settings.update { it.copy(floatingEnabled = true) }
+        } else {
+            graph.pendingOverlayEnable = true
+            graph.toast("Allow \"Display over other apps\" for PrivateVoice, then come back")
+            openOverlaySettings()
+        }
+        render()
+    }
+
     fun openOverlaySettings() {
         runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
     }
@@ -261,8 +285,16 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_SMS) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            graph.settings.update { it.copy(smsHistoryEnabled = granted) }
+            if (!granted) graph.toast("SMS access was not allowed")
+        }
         render()
     }
 
-    companion object { const val REQ_NOTIFICATIONS = 7 }
+    companion object {
+        const val REQ_NOTIFICATIONS = 7
+        const val REQ_SMS = 8
+    }
 }

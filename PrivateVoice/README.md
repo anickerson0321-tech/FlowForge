@@ -5,7 +5,7 @@ PrivateVoice is a native Android app that reads your incoming text messages alou
 - **Target:** Samsung Galaxy Z Fold7, Android 16 (API 36), arm64-v8a. Minimum Android 12 (API 31).
 - **Voice engine:** Kokoro-82M v1.0 (8-bit ONNX) running through ONNX Runtime on the CPU, with 28 English voices. A Kotlin port of misaki's grapheme-to-phoneme rules converts text to phonemes, using its 183k-entry lexicon.
 - **Fallback engine:** Android's installed text-to-speech, restricted to offline voices.
-- **Privacy:** message text stays in memory only and expires after a few minutes (10 by default). Nothing is logged, backed up or sent anywhere. See [PRIVACY.md](PRIVACY.md).
+- **Privacy:** message text stays in memory only and expires after a time you choose (1 hour by default, up to 24 hours). Nothing is logged, backed up or sent anywhere. Reading your SMS inbox history is optional and off until you allow it. See [PRIVACY.md](PRIVACY.md).
 
 ---
 
@@ -24,19 +24,20 @@ PrivateVoice is a native Android app that reads your incoming text messages alou
 
 With ADB instead: `adb install -r PrivateVoice-debug.apk`
 
-The APK is debug-signed with the standard Android debug key, so installing a later build signed with a different debug key requires uninstalling first.
+The APK is debug-signed with a fixed debug key committed in `signing/`, so later builds install as updates. (Builds from before this key was added used a random key: uninstall that copy once before installing a newer build.)
 
 ## Using it
 
 | Where | What |
 |---|---|
-| Dashboard | **Read latest message**, Stop, Pause/Resume, Repeat, status for access / engine / offline / auto-reading / playback / audio output, and the list of messages waiting (sender and app only, never text) |
+| Dashboard | **Read latest message**, Stop, Pause/Resume, Repeat, **Play a test message**, **Check notifications** (pulls in messages already in the notification shade), status for access / engine / offline / auto-reading / playback / audio output / **last message seen**, and **Recent messages**: new and already-heard messages you can hear again until they expire (sender and app only, never text) |
+| Text Messages | Optional. After you allow SMS access, lists your 40 most recent inbox texts (read or unread) to hear on demand, reads the newest unread, and lets you give a phone number a name and voice ("Name & voice") without Contacts access. Can be switched off again |
 | Notification | Read aloud · Repeat · Dismiss, and while reading Pause · Stop. The lock screen shows only "New message ready to read" |
 | Quick Settings tile | **Read message**: tap to read the latest, tap again to stop. When the phone is locked you must unlock first |
 | Floating button | Optional. Tap to read the latest; long-press for Stop / Pause / Repeat; drag to move. Transparency is adjustable, and it can hide when nothing is waiting and on the lock screen |
 | Voice Studio | Load or unload the engine, speaking speed, volume, emoji and texting-shorthand handling, default / announcer / masculine-category / feminine-category voices, previews for every voice |
 | People & Voices | Add a sender (picked from a waiting message for exact ID matching, or typed by name), choose a voice or a category, preview, edit, remove, delete all |
-| Automatic Reading | Off by default. Settings for: allowed outputs (headphones only / Bluetooth only / any), approved Bluetooth headphones, only when unlocked, quiet hours, pause during calls, skip groups, sender-only mode, announcements, how long unread messages are kept, temporary pause (15 min / 1 h / 8 h) |
+| Automatic Reading | Off by default. Settings for: allowed outputs (headphones only / Bluetooth only / any), approved Bluetooth headphones, only when unlocked, quiet hours, pause during calls, skip groups, sender-only mode, announcements, how long messages are kept to hear again (10 min / 1 h / 4 h / 24 h), whether opening a conversation forgets it, temporary pause (15 min / 1 h / 8 h) |
 | Privacy Center | Offline status, permission overview, clear temporary content, manage or delete voice assignments, honest limitations |
 
 **Voice priority for each message:** the sender's own voice → the voice for the category you put them in → the default voice. The optional announcer says "Message from Sarah." in the announcer voice, then the message is read in Sarah's voice.
@@ -102,6 +103,7 @@ audio/          SpeechPlayer (AudioTrack, audio focus, pause/resume, bounded que
                 AudioRouteMonitor (outputs, calls, becoming-noisy)
 overlay/        FloatingButtonController (TYPE_APPLICATION_OVERLAY, one instance, fold-aware)
 tile/           ReadLatestTileService
+sms/            SmsInbox (opt-in READ_SMS, queried on demand) · SmsSenders (names from your voice assignments)
 privacy/        PrivacyController
 ui/             MainActivity (single-pane on the cover screen, nav rail + content on the inner screen),
                 Screens, Dialogs
@@ -156,6 +158,7 @@ Presentation labels come from the model authors' naming. PrivateVoice never infe
   - PrivateVoice can only read what the messaging app puts in its notification.
   - Hidden or redacted content (e.g. "Sensitive notification content hidden", Android's OTP redaction) is reported as hidden and never guessed.
   - Apps that don't post MessagingStyle notifications give no stable sender ID, so voice assignments for them match by exact name.
+- **Old messages.** Messages from notifications are kept only in memory: if Android closes PrivateVoice in the background, the Recent list is lost. SMS texts can always be heard again from **Text Messages**. Chat/RCS messages (sent over data by Google Messages or Samsung Messages) aren't in the SMS inbox and can't be read from history, only from notifications.
 - **UI** uses framework Views instead of Jetpack Compose (see [Build](#build)).
 - **Debug signing only.** A release build would need your own keystore.
 

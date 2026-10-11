@@ -187,7 +187,8 @@ class ComponentTests {
         listener().onNotificationPosted(messagingNotification(msgs = arrayOf(Triple(person("Sarah", "k"), "hi", 100L))))
         val tile = Robolectric.buildService(ReadLatestTileService::class.java).create().get()
         tile.onClick()
-        assertEquals(0, graph.repository.all().size) // handed to the player
+        assertEquals(0, graph.repository.state.value.count) // read: no longer new
+        assertTrue(graph.repository.all().single().heard)  // but still available to hear again
         graph.reader.stop()
     }
 
@@ -223,6 +224,33 @@ class ComponentTests {
         idle()
         assertFalse(graph.overlay.isShowing)
         assertNotNull(wm)
+    }
+
+    @Test fun floatingButtonShowsWhenEnabledEvenWithNothingWaiting() {
+        ShadowSettings.setCanDrawOverlays(true)
+        graph.settings.update { it.copy(floatingEnabled = true, floatingHideOnLockScreen = false) }
+        idle()
+        assertTrue(graph.overlay.isShowing)
+        graph.settings.update { it.copy(floatingEnabled = false) }
+        idle()
+    }
+
+    @Test fun textMessagesScreenAsksBeforeReadingSms() {
+        val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        a.navigate(Screen.SMS)
+        idle()
+        val texts = a.window.decorView.allTexts()
+        assertTrue(texts.contains("Allow SMS access"))
+        assertFalse(graph.settings.current.smsHistoryEnabled)
+    }
+
+    @Test fun dashboardOffersTestMessageAndDiagnostics() {
+        val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val texts = a.window.decorView.allTexts()
+        assertTrue(texts.contains("▶  Play a test message"))
+        assertTrue(texts.contains("Last message seen"))
+        listener().onNotificationPosted(messagingNotification(msgs = arrayOf(Triple(person("Sarah", "k"), "hi", 100L))))
+        assertEquals("Google Messages", graph.diagnostics.value.lastMessageApp)
     }
 
     @Test fun floatingButtonHiddenWhenNothingWaiting() {

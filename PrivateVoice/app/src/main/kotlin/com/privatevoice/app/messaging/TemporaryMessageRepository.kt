@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Summary of pending messages for UI; contains no message text. */
 data class PendingState(
+    /** Messages not yet read aloud. */
     val count: Int = 0,
+    /** All messages still held (heard + not heard). */
+    val total: Int = 0,
     val latestId: Long? = null,
     val latestSender: String? = null,
     val latestAppLabel: String? = null,
@@ -26,6 +29,10 @@ interface TemporaryMessageRepository {
     fun all(): List<IncomingMessage>
     fun remove(id: Long)
     fun removeByNotificationKey(key: String)
+    /** Newest message not yet read aloud. */
+    fun latestUnheard(): IncomingMessage?
+    /** Marks a message as read aloud; it stays available to hear again until it expires. */
+    fun markHeard(id: Long)
     /** Drops expired messages; returns how many were removed. */
     fun expire(): Int
     fun clear()
@@ -61,6 +68,15 @@ class InMemoryMessageRepository(
     }
 
     override fun latest(): IncomingMessage? = synchronized(lock) { refreshLocked(); items.lastOrNull() }
+
+    override fun latestUnheard(): IncomingMessage? = synchronized(lock) { refreshLocked(); items.lastOrNull { !it.heard } }
+
+    override fun markHeard(id: Long) {
+        synchronized(lock) {
+            items.firstOrNull { it.id == id }?.heard = true
+            publishLocked()
+        }
+    }
 
     override fun get(id: Long): IncomingMessage? = synchronized(lock) { refreshLocked(); items.firstOrNull { it.id == id } }
 
@@ -107,9 +123,11 @@ class InMemoryMessageRepository(
     }
 
     private fun publishLocked() {
-        val last = items.lastOrNull()
+        val unheard = items.filter { !it.heard }
+        val last = unheard.lastOrNull()
         _state.value = PendingState(
-            count = items.size,
+            count = unheard.size,
+            total = items.size,
             latestId = last?.id,
             latestSender = last?.sender?.displayName,
             latestAppLabel = last?.appLabel,
@@ -121,8 +139,8 @@ class InMemoryMessageRepository(
     companion object {
         const val DEFAULT_TTL_MILLIS = 10 * 60_000L
         const val MIN_TTL_MILLIS = 60_000L
-        const val MAX_TTL_MILLIS = 60 * 60_000L
-        const val DEFAULT_CAPACITY = 20
+        const val MAX_TTL_MILLIS = 24 * 60 * 60_000L
+        const val DEFAULT_CAPACITY = 50
     }
 }
 

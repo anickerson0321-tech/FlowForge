@@ -32,7 +32,7 @@ tasks.register("privacyAudit") {
         // 1. Permissions
         val forbidden = listOf(
             "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE", "android.permission.RECORD_AUDIO",
-            "android.permission.READ_CONTACTS", "android.permission.READ_SMS", "android.permission.RECEIVE_SMS",
+            "android.permission.READ_CONTACTS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS",
             "android.permission.READ_PHONE_STATE", "android.permission.BIND_ACCESSIBILITY_SERVICE",
             "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE",
         )
@@ -80,6 +80,11 @@ tasks.register("privacyAudit") {
             allow = setOf("VoiceAssignments.kt", "AppSettings.kt"),
         )
         check("Persistent writes only in settings and encrypted voice assignments", files.isEmpty(), files.joinToString())
+        // READ_SMS is allowed only for the opt-in "Text Messages" history, requested at runtime from that screen.
+        val smsRequests = grep(Regex("Manifest\\.permission\\.READ_SMS"))
+        check("READ_SMS is only requested from the opt-in Text Messages flow",
+            smsRequests.all { it.startsWith("MainActivity.kt") || it.startsWith("SmsInbox.kt") || it.startsWith("Screens.kt") || it.startsWith("PrivacyController.kt") },
+            smsRequests.joinToString())
         val clipboard = grep(Regex("ClipboardManager|setPrimaryClip"))
         check("No clipboard use", clipboard.isEmpty(), clipboard.joinToString())
         val audioFiles = grep(Regex("\\.wav\"|\\.pcm\"|\\.mp3\"|MediaRecorder|synthesizeToFile"))

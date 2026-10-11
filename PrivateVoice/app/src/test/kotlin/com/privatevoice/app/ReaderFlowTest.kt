@@ -77,8 +77,68 @@ class ReaderFlowTest {
         val (job, interrupt) = player.played.single()
         assertTrue(interrupt)
         assertEquals(RouteRestriction.ANY, job.route)
-        assertEquals(0, repo.state.value.count) // handed to player, no longer pending
-        assertEquals(ReadResult.NOTHING_PENDING, reader.readLatest())
+        assertEquals(0, repo.state.value.count) // no longer "new"...
+        assertEquals(1, repo.state.value.total) // ...but kept so it can be heard again
+        assertTrue(repo.all().single().heard)
+        // Nothing new: Read latest replays the most recent message.
+        assertEquals(ReadResult.STARTED, reader.readLatest())
+        assertEquals(2, player.played.size)
+    }
+
+    @Test fun openingTheConversationDoesNotForgetTheMessage() {
+        post("Sarah", "Call me later", 100, key = "conv-sarah")
+        reader.onNotificationRemoved("conv-sarah") // user opened the chat in their messaging app
+        assertEquals(1, repo.all().size)
+        assertEquals(ReadResult.STARTED, reader.readMessage(repo.all().single().id))
+        settings = settings.copy(forgetOnDismiss = true)
+        post("Bob", "x", 200, key = "conv-bob")
+        reader.onNotificationRemoved("conv-bob")
+        assertEquals(listOf("Sarah"), repo.all().map { it.sender.displayName })
+    }
+
+    @Test fun heardMessagesStayUntilTheyExpire() {
+        settings = settings.copy(pendingTtlMinutes = 24 * 60)
+        post("Sarah", "one", 100)
+        reader.readLatest()
+        device.elapsed = 23 * 60 * 60_000L
+        reader.tick()
+        assertEquals(1, repo.all().size)
+        device.elapsed = 24 * 60 * 60_000L
+        reader.tick()
+        assertEquals(0, repo.all().size)
+    }
+
+    @Test fun messagesAlreadyInTheShadeAreNeverReadAutomatically() {
+        settings = settings.copy(autoReadEnabled = true, autoReadRoute = RouteRestriction.ANY)
+        val n = reader.addExisting("old", "pkg", "App", listOf(ParsedMessage("Sarah", null, "earlier text", 50, null, false)))
+        assertEquals(1, n)
+        assertTrue(player.played.isEmpty())
+        assertEquals(1, repo.state.value.count)
+        // Seen again when the listener reconnects: not duplicated.
+        assertEquals(0, reader.addExisting("old", "pkg", "App", listOf(ParsedMessage("Sarah", null, "earlier text", 50, null, false))))
+    }
+
+    @Test fun testMessageUsesAnnouncerAndSenderVoice() {
+        assignments += SenderAssignment("1", "Sarah", null, "Sarah", null, "kokoro:af_bella", VoiceCategory.DEFAULT, 0)
+        reader.playTestMessage()
+        val segs = player.played.single().first.segments
+        assertEquals("Message from Sarah.", segs.first().text)
+        assertEquals("kokoro:af_bella", segs.last().voiceId)
+        assertEquals(ReaderController.TEST_TEXT, segs.last().text)
+        assertEquals(0, repo.all().size) // test messages are not kept
+    }
+
+    @Test fun smsHistorySendersUseTheNameTheUserGave() {
+        val resolver = DefaultVoiceSelectionResolver()
+        assignments += SenderAssignment("1", "Mom", "tel:+15551234567", "", null, "kokoro:af_sarah", VoiceCategory.DEFAULT, 0)
+        val known = com.privatevoice.app.sms.SmsSenders.sender("(555) 123-4567", assignments, resolver)
+        assertEquals("Mom", known.displayName)
+        val unknown = com.privatevoice.app.sms.SmsSenders.sender("+1 555 000 9876", assignments, resolver)
+        assertEquals("a number ending in 9 8 7 6", unknown.displayName)
+        reader.readNow(known, null, "Dinner is ready")
+        val segs = player.played.single().first.segments
+        assertEquals("Message from Mom.", segs.first().text)
+        assertEquals("kokoro:af_sarah", segs.last().voiceId)
     }
 
     @Test fun announcerAndSenderVoicesAreSwitched() {

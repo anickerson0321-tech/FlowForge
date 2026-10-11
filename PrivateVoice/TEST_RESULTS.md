@@ -16,7 +16,7 @@ Recorded on 2026-10-11 from a clean `./gradlew clean assembleDebug test testDesu
 | Lambda desugaring | 131 `invokedynamic` sites rewritten across 2,375 classes; **0 remaining** (the build fails otherwise) |
 | Model asset | `assets/kokoro/kokoro-v1.0-q8.onnx` stored uncompressed (memory-mapped at runtime), SHA-256 `fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478` |
 
-## 2. Automated tests: 71 passed, 0 failed
+## 2. Automated tests: 83 passed, 0 failed
 
 ### 2a. JVM unit tests (no Android framework)
 
@@ -36,9 +36,23 @@ Recorded on 2026-10-11 from a clean `./gradlew clean assembleDebug test testDesu
 | AppLaunchTest | 1 | Application + dependency graph start; dashboard renders |
 | ComponentTests | 18 | `NotificationListenerService` with real `Notification.MessagingStyle` / `Person` objects (individual, group, own replies, re-post/update dedup, non-message and own-package ignored, disconnect clears memory); controls notification never contains message text, PRIVATE visibility, sender-free public version, correct actions; notification permission denied → no crash and nothing posted; Dismiss action clears; **neural model failure → reports it and falls back to the system voice**; Quick Settings tile reads latest; settings persistence contains no message text; privacy status (no INTERNET); floating button show/hide/reposition with no duplicate windows, hidden when empty; every screen renders on the cover-screen width (411dp); navigation rail on the inner-screen width (841dp); **fold/unfold** configuration changes keep the current screen and switch layouts; onboarding shown without notification access |
 
-### 2c. Same 71 tests against the APK bytecode
+### 2c. Same 83 tests against the APK bytecode
 
-`./gradlew testDesugared` runs the whole suite against the **desugared classes that are dexed into the APK**: app code plus kotlin-stdlib and kotlinx-coroutines after lambda rewriting. **71 passed, 0 failed.** This validates the custom desugaring step.
+`./gradlew testDesugared` runs the whole suite against the **desugared classes that are dexed into the APK**: app code plus kotlin-stdlib and kotlinx-coroutines after lambda rewriting. **83 passed, 0 failed.** This validates the custom desugaring step.
+
+### 2d. Added in the "older messages" update (included in the totals above)
+
+- Heard messages stay available to hear again until they expire (up to 24 h); "Read latest" replays the newest when nothing is new.
+- Opening a conversation in the messaging app no longer forgets the message, unless "Forget a message once I open it" is on.
+- Messages already in the notification shade are added to the list but never read automatically, and aren't duplicated on reconnect.
+- The test message uses the announcer and sender voices and isn't kept.
+- SMS history senders use the name you gave the number, or "a number ending in …"; phone numbers match across formats (`tel:+15551234567` = `(555) 123-4567`).
+- The SMS inbox query runs against a fake provider in Robolectric: permission required, newest first, read and unread messages, unread filter, limit.
+- The floating button shows when enabled even with nothing waiting.
+- The Text Messages screen asks before reading SMS.
+- The dashboard shows the test-message button and the "last message seen" diagnostic.
+
+Not verified: the real SMS provider and Android's permission dialog on One UI (sideload "restricted setting" behaviour for SMS access).
 
 ## 3. Neural voice verification
 

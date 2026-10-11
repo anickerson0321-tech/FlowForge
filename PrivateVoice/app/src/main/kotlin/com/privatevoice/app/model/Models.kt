@@ -37,6 +37,10 @@ class IncomingMessage(
 
     val contentAvailable: Boolean get() = !text.isNullOrBlank()
 
+    /** True once it has been read aloud; it stays available to hear again until it expires. */
+    @Volatile
+    var heard: Boolean = false
+
     /** Drops the reference to the message text (best effort; JVM strings are immutable). */
     fun wipe() {
         text = null

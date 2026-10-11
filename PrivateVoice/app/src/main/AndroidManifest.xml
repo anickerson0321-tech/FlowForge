@@ -2,13 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.privatevoice.app">
 
-    <!-- Deliberately NOT requested: INTERNET, RECORD_AUDIO, READ_CONTACTS, READ_SMS,
+    <!-- Deliberately NOT requested: INTERNET, RECORD_AUDIO, READ_CONTACTS, RECEIVE_SMS,
          BIND_ACCESSIBILITY_SERVICE. Message reading uses notification access only. -->
 
     <!-- Read-aloud / Stop controls notification (Android 13+ runtime permission). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Optional floating button; requested only when the user enables it. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Optional "Text Messages" history: requested at runtime only when the user turns it on. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
     <!-- Short-lived playback service while a message is being read (needed for audio focus on Android 15+). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />

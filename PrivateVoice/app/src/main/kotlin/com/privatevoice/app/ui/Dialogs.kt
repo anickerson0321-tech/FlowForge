@@ -81,17 +81,17 @@ object Dialogs {
     }
 
     /** Add or edit a sender assignment. New senders can be picked from messages currently in memory. */
-    fun editAssignment(a: MainActivity, existing: SenderAssignment?) {
+    fun editAssignment(a: MainActivity, existing: SenderAssignment?, prefillKey: String? = null, prefillName: String = "") {
         val ui = a.ui
         val g = a.graph
-        var matchKey = existing?.matchKey
+        var matchKey = existing?.matchKey ?: prefillKey
         var appPackage = existing?.appPackage
         var voiceId = existing?.voiceId
         var category = existing?.category ?: VoiceCategory.DEFAULT
         val form = ui.column(20)
         val name = EditText(a).apply {
-            hint = "Name as it appears in messages"
-            setText(existing?.matchName ?: "")
+            hint = if (prefillKey != null) "Name to announce (e.g. Sarah)" else "Name as it appears in messages"
+            setText(existing?.matchName ?: prefillName)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setTextColor(Palette.TEXT)
             setHintTextColor(Palette.TEXT_DIM)
@@ -99,7 +99,8 @@ object Dialogs {
         }
         val matchInfo = TextView(a).apply { textSize = 13f; setTextColor(Palette.TEXT_DIM) }
         fun updateMatchInfo() {
-            matchInfo.text = if (matchKey != null) "Will match this exact sender ID from ${appPackage?.let { g.appLabel(it) } ?: "the app"} (not just the name)."
+            matchInfo.text = if (matchKey?.startsWith("tel:") == true) "Will match the number ${matchKey!!.removePrefix("tel:")} in text history and in messaging apps. The name is what the announcer says."
+            else if (matchKey != null) "Will match this exact sender ID from ${appPackage?.let { g.appLabel(it) } ?: "the app"} (not just the name)."
             else "Will match the exact display name in any app."
         }
         updateMatchInfo()
@@ -113,7 +114,7 @@ object Dialogs {
         }
         updateVoiceLabel()
         with(ui) {
-            if (existing == null) {
+            if (existing == null && prefillKey == null) {
                 val recent = g.repository.all().map { it.sender }.distinctBy { (it.stableKey ?: it.displayName) + it.appPackage }
                 if (recent.isNotEmpty()) {
                     form.caption("From messages waiting now (more precise):")

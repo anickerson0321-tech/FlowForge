@@ -279,7 +279,9 @@ val alignApk by tasks.registering(Exec::class) {
     commandLine(zipalign, "-f", "-p", "4", unsigned.get().asFile.absolutePath, aligned.get().asFile.absolutePath)
 }
 
-val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+// A fixed, committed debug key so every build (local or CI) can update an installed copy.
+// It is a debug key with the well-known password "android" — not a secret. Use your own key for releases.
+val debugKeystore = rootProject.file("signing/debug.keystore")
 
 val createDebugKeystore by tasks.registering(Exec::class) {
     group = "android"

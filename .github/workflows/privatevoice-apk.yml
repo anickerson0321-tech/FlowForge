@@ -1,0 +1,53 @@
+name: PrivateVoice APK
+
+on:
+  push:
+    paths:
+      - "PrivateVoice/**"
+      - ".github/workflows/privatevoice-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: PrivateVoice
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android build tools (Debian packages used by the build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends aapt apksigner zipalign dalvik-exchange android-framework-res
+
+      - name: Build APK, run tests and privacy audit
+        run: ./gradlew assembleDebug test privacyAudit --console=plain
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivateVoice-debug-apk
+          path: |
+            PrivateVoice/app/build/outputs/apk/debug/PrivateVoice-debug.apk
+            PrivateVoice/app/build/outputs/apk/debug/PrivateVoice-debug.apk.sha256
+            PrivateVoice/app/build/reports/privacy-audit.txt
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: PrivateVoice/app/build/reports/tests/
+          retention-days: 30

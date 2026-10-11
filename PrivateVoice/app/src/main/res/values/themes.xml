@@ -1,0 +1,16 @@
+<resources>
+    <color name="pv_bg">#FF0E1015</color>
+    <color name="pv_surface">#FF171A22</color>
+    <color name="pv_primary">#FF8B6CFF</color>
+    <color name="pv_icon_bg">#FF2B2452</color>
+    <style name="Theme.PrivateVoice" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/pv_primary</item>
+        <item name="android:colorAccent">@color/pv_primary</item>
+        <item name="android:colorBackground">@color/pv_bg</item>
+        <item name="android:windowBackground">@color/pv_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+    </style>
+</resources>

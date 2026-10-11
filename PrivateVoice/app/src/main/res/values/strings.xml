@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">PrivateVoice</string>
+    <string name="listener_label">PrivateVoice message reader</string>
+    <string name="tile_label">Read message</string>
+</resources>

@@ -1,0 +1,20 @@
+PrivateVoice bundles the following open-source components:
+
+Kokoro-82M v1.0 (model weights and voice style tensors)
+  © hexgrad · Apache License 2.0 · https://huggingface.co/hexgrad/Kokoro-82M
+  8-bit ONNX export: onnx-community/Kokoro-82M-v1.0-ONNX (Apache 2.0)
+  Voice tensors as distributed in the kokoro-js npm package (Apache 2.0)
+
+misaki 0.9.4 (US English pronunciation lexicon, G2P rules ported to Kotlin)
+  © hexgrad · Apache License 2.0 · https://github.com/hexgrad/misaki
+
+ONNX Runtime 1.20.0 (Android)
+  © Microsoft Corporation · MIT License · https://github.com/microsoft/onnxruntime
+
+Kotlin Standard Library, kotlinx.coroutines
+  © JetBrains s.r.o. and contributors · Apache License 2.0
+
+JetBrains Java Annotations · Apache License 2.0
+
+The full Apache License 2.0 text: https://www.apache.org/licenses/LICENSE-2.0
+The MIT License text is reproduced in LICENSES.md in the source code.
